@@ -417,6 +417,14 @@ class Decoder(nn.Module):
     Uses progressive upsampling with skip connections from the IR encoder
     to preserve fine structural details. The decoder takes the combined
     features from the feature matching module and generates RGB output.
+    
+    The encoder (ResNet) downsamples by 32x total:
+    - conv1: 2x downsample
+    - maxpool: 2x downsample  
+    - layer1-4: each maintains or downsamples by 2x
+    
+    So for 256x256 input -> 8x8 bottleneck, we need 5 upsampling stages
+    (each 2x) to get back to 256x256.
     """
     
     def __init__(
@@ -443,29 +451,52 @@ class Decoder(nn.Module):
         self.use_skip_connections = use_skip_connections
         
         # Decoder blocks with progressively fewer channels
-        # Typical channel progression: 512 -> 256 -> 128 -> 64 -> 64
+        # Need 5 upsampling stages to go from H/32 back to H
+        # Channel progression: 512 -> 256 -> 128 -> 64 -> 64 -> 32
         channel_sequence = [
-            bottleneck_channels,
-            bottleneck_channels // 2,
-            bottleneck_channels // 4,
-            bottleneck_channels // 8,
-            64
+            bottleneck_channels,           # 512 (at H/32)
+            bottleneck_channels // 2,      # 256 (at H/16)
+            bottleneck_channels // 4,      # 128 (at H/8)
+            bottleneck_channels // 8,      # 64  (at H/4)
+            64,                            # 64  (at H/2)
+            32                             # 32  (at H)
         ]
         
         self.blocks = nn.ModuleList()
+        
+        # skip_channels from encoder: [64, 64, 128, 256, 512] for resnet34
+        # These correspond to: [H/2, H/4, H/8, H/16, H/32]
+        # Reversed for decoder: [H/32, H/16, H/8, H/4, H/2]
         
         for i in range(len(channel_sequence) - 1):
             in_ch = channel_sequence[i]
             out_ch = channel_sequence[i + 1]
             
-            # Skip channels (reversed to match encoder order)
-            skip_ch = skip_channels[-(i+2)] if use_skip_connections and i < len(skip_channels) - 1 else 0
+            # Determine skip connection channels for this stage
+            # Stage 0: H/32 -> H/16, skip from layer3 (H/16)
+            # Stage 1: H/16 -> H/8, skip from layer2 (H/8)
+            # Stage 2: H/8 -> H/4, skip from layer1 (H/4)
+            # Stage 3: H/4 -> H/2, skip from conv1 (H/2)
+            # Stage 4: H/2 -> H, no skip (or could add input image)
+            
+            if use_skip_connections and i < len(skip_channels) - 1:
+                # Map decoder stage to encoder skip index
+                # skip_channels = [conv1, layer1, layer2, layer3, layer4]
+                # indices:         [0,     1,      2,      3,      4]
+                # We want: stage 0 -> skip 3, stage 1 -> skip 2, etc.
+                skip_idx = len(skip_channels) - 2 - i
+                if skip_idx >= 0:
+                    skip_ch = skip_channels[skip_idx]
+                else:
+                    skip_ch = 0
+            else:
+                skip_ch = 0
             
             self.blocks.append(
                 DecoderBlock(in_ch, skip_ch, out_ch, use_instance_norm)
             )
         
-        # Final output convolution
+        # Final output convolution (no upsampling, just channel reduction)
         self.output_conv = nn.Sequential(
             nn.Conv2d(channel_sequence[-1], output_channels, 3, padding=1),
             nn.Tanh()  # Output in [-1, 1] range
@@ -480,21 +511,26 @@ class Decoder(nn.Module):
         Generate colorized output from combined features.
         
         Args:
-            x: Bottleneck features [B, C, H, W]
-            skip_features: List of skip connection features (deepest first)
+            x: Bottleneck features [B, C, H/32, W/32]
+            skip_features: List of skip connection features from encoder
+                          Order: [conv1 (H/2), layer1 (H/4), layer2 (H/8), 
+                                  layer3 (H/16), layer4 (H/32)]
             
         Returns:
-            Colorized output [B, 3, H_out, W_out]
+            Colorized output [B, 3, H, W]
         """
-        # Reverse skip features to go from deep to shallow
-        if skip_features is not None:
-            skip_features = skip_features[::-1]
-        
         for i, block in enumerate(self.blocks):
             skip = None
             if self.use_skip_connections and skip_features is not None:
-                if i < len(skip_features) - 1:  # Don't use the deepest skip
-                    skip = skip_features[i + 1]
+                # Map decoder stage to skip feature
+                # stage 0 (H/32->H/16): use skip from layer3 (index 3)
+                # stage 1 (H/16->H/8): use skip from layer2 (index 2)
+                # stage 2 (H/8->H/4): use skip from layer1 (index 1)
+                # stage 3 (H/4->H/2): use skip from conv1 (index 0)
+                # stage 4 (H/2->H): no skip
+                skip_idx = len(skip_features) - 2 - i
+                if skip_idx >= 0:
+                    skip = skip_features[skip_idx]
             x = block(x, skip)
         
         # Final output
@@ -652,3 +688,4 @@ if __name__ == "__main__":
     print(f"Content features shape: {results['content_features'].shape}")
     print(f"Reference features shape: {results['ref_features'].shape}")
     print(f"Output range: [{results['output'].min():.3f}, {results['output'].max():.3f}]")
+    
