@@ -212,6 +212,10 @@ class CrossAttention(nn.Module):
         # [B, num_heads, N_q, head_dim] @ [B, num_heads, head_dim, N_k]
         # -> [B, num_heads, N_q, N_k]
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
+        
+        # Clamp attention scores to prevent overflow in softmax
+        attn_scores = torch.clamp(attn_scores, min=-50.0, max=50.0)
+        
         attn_weights = F.softmax(attn_scores, dim=-1)
         attn_weights = self.dropout(attn_weights)
         
@@ -599,6 +603,27 @@ class IRColorNet(nn.Module):
             use_instance_norm=config.use_instance_norm
         )
         
+        # Initialize weights for non-pretrained layers
+        self._init_weights()
+        
+    def _init_weights(self):
+        """Initialize weights for decoder and attention layers."""
+        for module in [self.feature_matching, self.decoder]:
+            for m in module.modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
+                elif isinstance(m, nn.Linear):
+                    nn.init.trunc_normal_(m.weight, std=0.02)
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
+                elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.LayerNorm)):
+                    if m.weight is not None:
+                        nn.init.constant_(m.weight, 1)
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
+        
     def forward(
         self, 
         ir_image: torch.Tensor, 
@@ -688,4 +713,3 @@ if __name__ == "__main__":
     print(f"Content features shape: {results['content_features'].shape}")
     print(f"Reference features shape: {results['ref_features'].shape}")
     print(f"Output range: [{results['output'].min():.3f}, {results['output'].max():.3f}]")
-    

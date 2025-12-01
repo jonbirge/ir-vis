@@ -139,7 +139,8 @@ class LossConfig:
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
-    style_weight: float = 50.0
+    # Note: Reduced from 50.0 to 10.0 for numerical stability
+    style_weight: float = 10.0
     
     # Color histogram loss weight
     # Encourages the output to have similar color distribution to ground truth
@@ -193,7 +194,8 @@ class TrainingConfig:
     lr_min: float = 1e-6
     
     # Gradient clipping (max norm) - helps stabilize training
-    gradient_clip_norm: float = 1.0
+    # Reduced from 1.0 to 0.5 for better stability during early training
+    gradient_clip_norm: float = 0.5
     
     # How often to save checkpoints (in epochs)
     save_every: int = 5
@@ -217,7 +219,9 @@ class TrainingConfig:
     seed: int = 42
     
     # Mixed precision training (faster on modern GPUs)
-    use_amp: bool = True
+    # Note: Disabled by default as it can cause NaN issues with VGG perceptual loss
+    # Enable once training is stable: use_amp: bool = True
+    use_amp: bool = False
     
     # Device: 'cuda', 'cpu', or specific GPU like 'cuda:0'
     device: str = "cuda"

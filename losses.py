@@ -107,8 +107,12 @@ class VGGFeatures(nn.Module):
         Returns:
             Normalized tensor
         """
+        # Clamp to expected range first
+        x = torch.clamp(x, -1.0, 1.0)
         # Convert from [-1, 1] to [0, 1]
         x = (x + 1) / 2
+        # Clamp again to be safe
+        x = torch.clamp(x, 0.0, 1.0)
         # Apply ImageNet normalization
         return (x - self.mean) / self.std
     
@@ -157,11 +161,15 @@ def gram_matrix(features: torch.Tensor) -> torch.Tensor:
     # Reshape to [B, C, H*W]
     features = features.view(B, C, H * W)
     
+    # Normalize features to prevent explosion in Gram matrix
+    # This is crucial for numerical stability
+    features = features / (H * W) ** 0.5
+    
     # Compute Gram matrix: [B, C, H*W] @ [B, H*W, C] -> [B, C, C]
     gram = torch.bmm(features, features.transpose(1, 2))
     
-    # Normalize by number of elements
-    gram = gram / (C * H * W)
+    # Normalize by number of channels
+    gram = gram / C
     
     return gram
 
@@ -302,13 +310,14 @@ class ColorHistogramLoss(nn.Module):
     Soft histograms use differentiable binning, allowing gradient flow.
     """
     
-    def __init__(self, num_bins: int = 64, sigma: float = 0.02):
+    def __init__(self, num_bins: int = 64, sigma: float = 0.1):
         """
         Initialize color histogram loss.
         
         Args:
             num_bins: Number of histogram bins per channel
             sigma: Softness of binning (larger = softer edges between bins)
+                   Increased from 0.02 to 0.1 for numerical stability
         """
         super().__init__()
         self.num_bins = num_bins
@@ -333,6 +342,9 @@ class ColorHistogramLoss(nn.Module):
         """
         B, C, H, W = x.shape
         
+        # Clamp input to valid range to prevent extreme values
+        x = torch.clamp(x, -1.0, 1.0)
+        
         # Flatten spatial dimensions: [B, C, N] where N = H*W
         x_flat = x.view(B, C, -1)
         
@@ -343,14 +355,17 @@ class ColorHistogramLoss(nn.Module):
         bins = self.bins.view(1, 1, 1, -1)
         
         # Soft binning using Gaussian kernel
-        # [B, C, N, num_bins]
-        weights = torch.exp(-0.5 * ((x_flat - bins) / self.sigma) ** 2)
+        # Compute squared distance first to avoid extreme values
+        diff = (x_flat - bins) / self.sigma
+        # Clamp to prevent overflow in exp
+        diff_sq = torch.clamp(diff ** 2, max=50.0)
+        weights = torch.exp(-0.5 * diff_sq)
         
         # Sum over spatial dimension to get histogram: [B, C, num_bins]
         hist = weights.sum(dim=2)
         
         # Normalize to sum to 1
-        hist = hist / (hist.sum(dim=-1, keepdim=True) + 1e-8)
+        hist = hist / (hist.sum(dim=-1, keepdim=True) + 1e-6)
         
         return hist
     
@@ -430,6 +445,10 @@ class CombinedLoss(nn.Module):
         """
         losses = {}
         
+        # Clamp inputs to expected range for stability
+        pred = torch.clamp(pred, -1.0, 1.0)
+        target = torch.clamp(target, -1.0, 1.0)
+        
         # L1 (pixel-wise) loss
         l1_loss = F.l1_loss(pred, target)
         losses['l1'] = l1_loss
@@ -455,6 +474,16 @@ class CombinedLoss(nn.Module):
             self.config.style_weight * style_loss +
             self.config.histogram_weight * histogram_loss
         )
+        
+        # Check for NaN and replace with L1 loss only if needed
+        if torch.isnan(total_loss):
+            print("WARNING: NaN detected in loss, falling back to L1 only")
+            total_loss = l1_loss
+            # Mark which losses were NaN for debugging
+            for name, value in losses.items():
+                if torch.isnan(value):
+                    print(f"  NaN in: {name}")
+        
         losses['total'] = total_loss
         
         return total_loss, losses
