@@ -1,9 +1,9 @@
 # IR-to-Color Image Translation
 # Required Python packages
 
-# Core deep learning
-# torch>=2.0.0
-# torchvision>=0.15.0
+# Core deep learning (torch and torchvision versions with CUDA support)
+torch==2.0.1+cu124
+torchvision==0.15.2+cu124
 
 # Image processing
 Pillow>=9.0.0
