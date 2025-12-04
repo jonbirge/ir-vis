@@ -482,6 +482,18 @@ def train(config: Config) -> None:
     start_epoch = 0
     best_val_loss = float('inf')
     
+    # Auto-detect latest checkpoint if no explicit resume path
+    if config.training.resume_checkpoint is None:
+        checkpoint_dir = os.path.join(config.training.output_dir, "checkpoints")
+        if os.path.exists(checkpoint_dir):
+            checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith("epoch_") and f.endswith(".pt")]
+            if checkpoints:
+                # Sort and get latest
+                checkpoints.sort()
+                latest = os.path.join(checkpoint_dir, checkpoints[-1])
+                print(f"Found existing checkpoint: {latest}")
+                config.training.resume_checkpoint = latest
+    
     if config.training.resume_checkpoint:
         metadata = load_checkpoint(
             config.training.resume_checkpoint,
@@ -614,7 +626,7 @@ def main():
     parser.add_argument(
         '--dataset', type=str, default=None,
         choices=['cityscapes', 'coco'],
-        help="Dataset to use: 'cityscapes' (default, requires manual download) or 'coco' (auto-downloads)"
+        help="Dataset to use: 'cityscapes' (reqs manual download) or 'coco' (default, auto-downloads)"
     )
     
     args = parser.parse_args()

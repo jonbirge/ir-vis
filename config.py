@@ -200,7 +200,7 @@ class TrainingConfig:
     gradient_clip_norm: float = 0.5
     
     # How often to save checkpoints (in epochs)
-    save_every: int = 5
+    save_every: int = 1
     
     # How often to log training metrics (in iterations)
     log_every: int = 50
