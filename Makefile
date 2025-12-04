@@ -30,7 +30,7 @@ endif
 .PHONY: help setup venv install train train-coco train-cityscapes \
         clean clean-checkpoints clean-visualizations clean-logs clean-data \
         test test-model test-dataset test-losses lint format \
-        inference tensorboard check
+        inference tensorboard check tarball
 
 # Default target
 help:
@@ -309,6 +309,20 @@ tensorboard:
 	@echo NOTE: TensorBoard integration requires adding TensorBoard logging to train.py
 	$(VENV_PIP) install tensorboard --quiet 2>nul || true
 	$(VENV_PYTHON) -m tensorboard.main --logdir=$(OUTPUT_DIR)/logs
+
+# Create a tarball of the project (excluding outputs, data, venv)
+tarball:
+	@echo Creating project tarball...
+ifeq ($(OS),Windows_NT)
+	@powershell -Command "$$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $$tarname = \"ir-color-translation_$$timestamp.tar.bz2\"; tar --exclude='$(OUTPUT_DIR)' --exclude='$(DATA_DIR)' --exclude='$(VENV_DIR)' --exclude='*.tar.bz2' --exclude='__pycache__' --exclude='.git' --exclude='*.pyc' -cvjf $$tarname .; Write-Host \"Created $$tarname\""
+else
+	@timestamp=$$(date +%Y%m%d_%H%M%S); \
+	tarname="ir-color-translation_$$timestamp.tar.bz2"; \
+	tar --exclude='$(OUTPUT_DIR)' --exclude='$(DATA_DIR)' --exclude='$(VENV_DIR)' \
+	    --exclude='*.tar.bz2' --exclude='__pycache__' --exclude='.git' --exclude='*.pyc' \
+	    -cvjf "$$tarname" .; \
+	echo "Created $$tarname"
+endif
 
 # Show current configuration
 show-config:
