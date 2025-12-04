@@ -104,7 +104,13 @@ class CityscapesLoader:
             data_root: Root directory where data is stored
         """
         self.data_root = Path(data_root)
+        # Support both extraction folder names:
+        # - "cityscapes" (expected standard location)
+        # - "leftImg8bit_trainvaltest" (default extraction folder name)
         self.cityscapes_root = self.data_root / "cityscapes"
+        if not (self.cityscapes_root / "leftImg8bit").exists():
+            # Try alternative extraction folder name
+            self.cityscapes_root = self.data_root / "leftImg8bit_trainvaltest"
         self.leftimg_root = self.cityscapes_root / "leftImg8bit"
         
     def check_exists(self) -> bool:
