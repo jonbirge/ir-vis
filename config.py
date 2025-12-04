@@ -61,10 +61,10 @@ class DataConfig:
     
     # Augmentation parameters
     random_horizontal_flip: bool = True
-    color_jitter_brightness: float = 0.15
-    color_jitter_contrast: float = 0.15
-    color_jitter_saturation: float = 0.15
-    color_jitter_hue: float = 0.1
+    color_jitter_brightness: float = 0.1
+    color_jitter_contrast: float = 0.1
+    color_jitter_saturation: float = 0.1
+    color_jitter_hue: float = 0.05
     
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
@@ -180,7 +180,7 @@ class TrainingConfig:
     batch_size: int = 10
     
     # Number of training epochs
-    num_epochs: int = 32
+    num_epochs: int = 100
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features

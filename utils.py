@@ -241,50 +241,56 @@ def save_comparison_image(
         filepath: Path to save the visualization
         title: Optional title for the figure
     """
-    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-    
-    # Denormalize tensors
-    ir_denorm = denormalize_gray(ir_image)
-    ref_denorm = denormalize(ref_image)
-    target_denorm = denormalize(target_image)
-    
-    # Model output is in [-1, 1], convert to [0, 1]
-    pred_denorm = (pred_image + 1) / 2
-    pred_denorm = torch.clamp(pred_denorm, 0, 1)
-    
-    # Convert to images
-    ir_img = tensor_to_image(ir_denorm)
-    ref_img = tensor_to_image(ref_denorm)
-    pred_img = tensor_to_image(pred_denorm)
-    target_img = tensor_to_image(target_denorm)
-    
-    # Plot
-    axes[0, 0].imshow(ir_img)
-    axes[0, 0].set_title('IR Input (Grayscale)', fontsize=12)
-    axes[0, 0].axis('off')
-    
-    axes[0, 1].imshow(ref_img)
-    axes[0, 1].set_title('Color Reference', fontsize=12)
-    axes[0, 1].axis('off')
-    
-    axes[1, 0].imshow(pred_img)
-    axes[1, 0].set_title('Model Prediction', fontsize=12)
-    axes[1, 0].axis('off')
-    
-    axes[1, 1].imshow(target_img)
-    axes[1, 1].set_title('Ground Truth', fontsize=12)
-    axes[1, 1].axis('off')
-    
-    if title:
-        fig.suptitle(title, fontsize=14)
-    
-    plt.tight_layout()
-    
-    # Create directory if needed
-    Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-    
-    plt.savefig(filepath, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    fig = None
+    try:
+        fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+        
+        # Denormalize tensors
+        ir_denorm = denormalize_gray(ir_image)
+        ref_denorm = denormalize(ref_image)
+        target_denorm = denormalize(target_image)
+        
+        # Model output is in [-1, 1], convert to [0, 1]
+        pred_denorm = (pred_image + 1) / 2
+        pred_denorm = torch.clamp(pred_denorm, 0, 1)
+        
+        # Convert to images
+        ir_img = tensor_to_image(ir_denorm)
+        ref_img = tensor_to_image(ref_denorm)
+        pred_img = tensor_to_image(pred_denorm)
+        target_img = tensor_to_image(target_denorm)
+        
+        # Plot
+        axes[0, 0].imshow(ir_img)
+        axes[0, 0].set_title('IR Input (Grayscale)', fontsize=12)
+        axes[0, 0].axis('off')
+        
+        axes[0, 1].imshow(ref_img)
+        axes[0, 1].set_title('Color Reference', fontsize=12)
+        axes[0, 1].axis('off')
+        
+        axes[1, 0].imshow(pred_img)
+        axes[1, 0].set_title('Model Prediction', fontsize=12)
+        axes[1, 0].axis('off')
+        
+        axes[1, 1].imshow(target_img)
+        axes[1, 1].set_title('Ground Truth', fontsize=12)
+        axes[1, 1].axis('off')
+        
+        if title:
+            fig.suptitle(title, fontsize=14)
+        
+        plt.tight_layout()
+        
+        # Create directory if needed
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+    finally:
+        if fig is not None:
+            plt.close(fig)
+        else:
+            plt.close('all')
 
 
 def save_batch_visualization(
@@ -311,47 +317,53 @@ def save_batch_visualization(
     """
     batch_size = min(ir_images.shape[0], max_samples)
     
-    fig, axes = plt.subplots(batch_size, 4, figsize=(16, 4 * batch_size))
-    
-    # Handle single sample case
-    if batch_size == 1:
-        axes = axes.reshape(1, -1)
-    
-    column_titles = ['IR Input', 'Reference', 'Prediction', 'Ground Truth']
-    
-    for i in range(batch_size):
-        # Get single samples
-        ir = ir_images[i]
-        ref = ref_images[i]
-        pred = pred_images[i]
-        target = target_images[i]
+    fig = None
+    try:
+        fig, axes = plt.subplots(batch_size, 4, figsize=(16, 4 * batch_size))
         
-        # Denormalize
-        ir_denorm = denormalize_gray(ir)
-        ref_denorm = denormalize(ref)
-        target_denorm = denormalize(target)
-        pred_denorm = (pred + 1) / 2
-        pred_denorm = torch.clamp(pred_denorm, 0, 1)
+        # Handle single sample case
+        if batch_size == 1:
+            axes = axes.reshape(1, -1)
         
-        # Convert to images
-        images = [
-            tensor_to_image(ir_denorm),
-            tensor_to_image(ref_denorm),
-            tensor_to_image(pred_denorm),
-            tensor_to_image(target_denorm)
-        ]
+        column_titles = ['IR Input', 'Reference', 'Prediction', 'Ground Truth']
         
-        # Plot row
-        for j, (img, title) in enumerate(zip(images, column_titles)):
-            axes[i, j].imshow(img)
-            if i == 0:
-                axes[i, j].set_title(title, fontsize=12)
-            axes[i, j].axis('off')
-    
-    plt.tight_layout()
-    Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(filepath, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+        for i in range(batch_size):
+            # Get single samples
+            ir = ir_images[i]
+            ref = ref_images[i]
+            pred = pred_images[i]
+            target = target_images[i]
+            
+            # Denormalize
+            ir_denorm = denormalize_gray(ir)
+            ref_denorm = denormalize(ref)
+            target_denorm = denormalize(target)
+            pred_denorm = (pred + 1) / 2
+            pred_denorm = torch.clamp(pred_denorm, 0, 1)
+            
+            # Convert to images
+            images = [
+                tensor_to_image(ir_denorm),
+                tensor_to_image(ref_denorm),
+                tensor_to_image(pred_denorm),
+                tensor_to_image(target_denorm)
+            ]
+            
+            # Plot row
+            for j, (img, title) in enumerate(zip(images, column_titles)):
+                axes[i, j].imshow(img)
+                if i == 0:
+                    axes[i, j].set_title(title, fontsize=12)
+                axes[i, j].axis('off')
+        
+        plt.tight_layout()
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+    finally:
+        if fig is not None:
+            plt.close(fig)
+        else:
+            plt.close('all')
 
 
 class MetricsLogger:
@@ -423,8 +435,11 @@ class MetricsLogger:
     def save(self) -> None:
         """Save metrics to JSON file."""
         filepath = self.log_dir / 'metrics.json'
-        with open(filepath, 'w') as f:
-            json.dump(self.metrics, f, indent=2)
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(self.metrics, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Failed to save metrics: {e}")
     
     def plot_losses(self, filepath: Optional[str] = None) -> None:
         """
@@ -436,57 +451,64 @@ class MetricsLogger:
         if not self.metrics['train']:
             return
         
-        epochs = [m['epoch'] for m in self.metrics['train']]
-        
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-        
-        # Total loss
-        if 'train_total' in self.metrics['train'][0]:
-            total_losses = [m.get('train_total', 0) for m in self.metrics['train']]
-            axes[0, 0].plot(epochs, total_losses, 'b-', label='Total Loss')
-            axes[0, 0].set_xlabel('Epoch')
-            axes[0, 0].set_ylabel('Loss')
-            axes[0, 0].set_title('Total Loss')
-            axes[0, 0].legend()
-            axes[0, 0].grid(True, alpha=0.3)
-        
-        # L1 loss
-        if 'train_l1' in self.metrics['train'][0]:
-            l1_losses = [m.get('train_l1', 0) for m in self.metrics['train']]
-            axes[0, 1].plot(epochs, l1_losses, 'r-', label='L1 Loss')
-            axes[0, 1].set_xlabel('Epoch')
-            axes[0, 1].set_ylabel('Loss')
-            axes[0, 1].set_title('L1 (Pixel) Loss')
-            axes[0, 1].legend()
-            axes[0, 1].grid(True, alpha=0.3)
-        
-        # Perceptual loss
-        if 'train_perceptual' in self.metrics['train'][0]:
-            perc_losses = [m.get('train_perceptual', 0) for m in self.metrics['train']]
-            axes[1, 0].plot(epochs, perc_losses, 'g-', label='Perceptual Loss')
-            axes[1, 0].set_xlabel('Epoch')
-            axes[1, 0].set_ylabel('Loss')
-            axes[1, 0].set_title('Perceptual Loss')
-            axes[1, 0].legend()
-            axes[1, 0].grid(True, alpha=0.3)
-        
-        # Style loss
-        if 'train_style' in self.metrics['train'][0]:
-            style_losses = [m.get('train_style', 0) for m in self.metrics['train']]
-            axes[1, 1].plot(epochs, style_losses, 'm-', label='Style Loss')
-            axes[1, 1].set_xlabel('Epoch')
-            axes[1, 1].set_ylabel('Loss')
-            axes[1, 1].set_title('Style Loss')
-            axes[1, 1].legend()
-            axes[1, 1].grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        
-        if filepath:
-            Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-            plt.savefig(filepath, dpi=150)
-        
-        plt.close(fig)
+        fig = None
+        try:
+            epochs = [m['epoch'] for m in self.metrics['train']]
+            
+            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+            
+            # Total loss
+            if 'train_total' in self.metrics['train'][0]:
+                total_losses = [m.get('train_total', 0) for m in self.metrics['train']]
+                axes[0, 0].plot(epochs, total_losses, 'b-', label='Total Loss')
+                axes[0, 0].set_xlabel('Epoch')
+                axes[0, 0].set_ylabel('Loss')
+                axes[0, 0].set_title('Total Loss')
+                axes[0, 0].legend()
+                axes[0, 0].grid(True, alpha=0.3)
+            
+            # L1 loss
+            if 'train_l1' in self.metrics['train'][0]:
+                l1_losses = [m.get('train_l1', 0) for m in self.metrics['train']]
+                axes[0, 1].plot(epochs, l1_losses, 'r-', label='L1 Loss')
+                axes[0, 1].set_xlabel('Epoch')
+                axes[0, 1].set_ylabel('Loss')
+                axes[0, 1].set_title('L1 (Pixel) Loss')
+                axes[0, 1].legend()
+                axes[0, 1].grid(True, alpha=0.3)
+            
+            # Perceptual loss
+            if 'train_perceptual' in self.metrics['train'][0]:
+                perc_losses = [m.get('train_perceptual', 0) for m in self.metrics['train']]
+                axes[1, 0].plot(epochs, perc_losses, 'g-', label='Perceptual Loss')
+                axes[1, 0].set_xlabel('Epoch')
+                axes[1, 0].set_ylabel('Loss')
+                axes[1, 0].set_title('Perceptual Loss')
+                axes[1, 0].legend()
+                axes[1, 0].grid(True, alpha=0.3)
+            
+            # Style loss
+            if 'train_style' in self.metrics['train'][0]:
+                style_losses = [m.get('train_style', 0) for m in self.metrics['train']]
+                axes[1, 1].plot(epochs, style_losses, 'm-', label='Style Loss')
+                axes[1, 1].set_xlabel('Epoch')
+                axes[1, 1].set_ylabel('Loss')
+                axes[1, 1].set_title('Style Loss')
+                axes[1, 1].legend()
+                axes[1, 1].grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            
+            if filepath:
+                Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+                plt.savefig(filepath, dpi=150)
+        except Exception as e:
+            print(f"Warning: Failed to plot losses: {e}")
+        finally:
+            if fig is not None:
+                plt.close(fig)
+            else:
+                plt.close('all')  # Ensure any orphaned figures are closed
 
 
 def count_parameters(model: nn.Module) -> Dict[str, int]:

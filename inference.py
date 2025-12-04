@@ -302,34 +302,40 @@ def create_comparison_figure(
     """
     import matplotlib.pyplot as plt # type: ignore
     
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
-    # Ensure all images are RGB for display
-    if ir_image.mode == 'L':
-        ir_display = ir_image.convert('RGB')
-    else:
-        ir_display = ir_image
-    
-    if ref_image.mode != 'RGB':
-        ref_display = ref_image.convert('RGB')
-    else:
-        ref_display = ref_image
-    
-    axes[0].imshow(ir_display)
-    axes[0].set_title('IR Input', fontsize=14)
-    axes[0].axis('off')
-    
-    axes[1].imshow(ref_display)
-    axes[1].set_title('Color Reference', fontsize=14)
-    axes[1].axis('off')
-    
-    axes[2].imshow(result_image)
-    axes[2].set_title('Colorized Output', fontsize=14)
-    axes[2].axis('off')
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
+    fig = None
+    try:
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        
+        # Ensure all images are RGB for display
+        if ir_image.mode == 'L':
+            ir_display = ir_image.convert('RGB')
+        else:
+            ir_display = ir_image
+        
+        if ref_image.mode != 'RGB':
+            ref_display = ref_image.convert('RGB')
+        else:
+            ref_display = ref_image
+        
+        axes[0].imshow(ir_display)
+        axes[0].set_title('IR Input', fontsize=14)
+        axes[0].axis('off')
+        
+        axes[1].imshow(ref_display)
+        axes[1].set_title('Color Reference', fontsize=14)
+        axes[1].axis('off')
+        
+        axes[2].imshow(result_image)
+        axes[2].set_title('Colorized Output', fontsize=14)
+        axes[2].axis('off')
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    finally:
+        if fig is not None:
+            plt.close(fig)
+        else:
+            plt.close('all')
 
 
 def process_directory(
