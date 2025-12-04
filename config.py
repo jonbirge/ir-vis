@@ -65,6 +65,10 @@ class DataConfig:
     color_jitter_contrast: float = 0.15
     color_jitter_saturation: float = 0.15
     color_jitter_hue: float = 0.1
+    
+    # Maximum number of training samples to use (None = use all)
+    # Useful for debugging or quick experiments with smaller subsets
+    max_train_samples: Optional[int] = 16000
 
 
 @dataclass

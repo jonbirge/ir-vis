@@ -694,7 +694,8 @@ def get_dataloaders(config: Config) -> Tuple[DataLoader, DataLoader]:
         train_dataset = IRColorPairDataset(
             image_source=train_paths,
             config=data_config,
-            is_training=True
+            is_training=True,
+            max_samples=data_config.max_train_samples
         )
         
         val_dataset = IRColorPairDataset(
@@ -713,7 +714,8 @@ def get_dataloaders(config: Config) -> Tuple[DataLoader, DataLoader]:
         train_dataset = IRColorPairDataset(
             image_source=str(train_dir),
             config=data_config,
-            is_training=True
+            is_training=True,
+            max_samples=data_config.max_train_samples
         )
         
         val_dataset = IRColorPairDataset(
@@ -721,7 +723,7 @@ def get_dataloaders(config: Config) -> Tuple[DataLoader, DataLoader]:
             config=data_config,
             is_training=False
         )
-        
+    
     else:
         raise ValueError(
             f"Unknown dataset: {dataset_name}. "
