@@ -67,16 +67,59 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 
 ### Quick Start
 
-Simply run the training script:
+#### Option 1: Cityscapes (Default - Recommended for Urban Scenes)
+
+Cityscapes provides high-quality 2048x1024 urban street scenes. It requires free registration but can auto-download:
+
+**Automatic Download:**
+1. Register (free) at: https://www.cityscapes-dataset.com/register/
+2. Set environment variables with your credentials:
+   
+   **Windows (PowerShell):**
+   ```powershell
+   $env:CITYSCAPES_USERNAME = "your_email@example.com"
+   $env:CITYSCAPES_PASSWORD = "your_password"
+   ```
+   
+   **Windows (CMD):**
+   ```cmd
+   set CITYSCAPES_USERNAME=your_email@example.com
+   set CITYSCAPES_PASSWORD=your_password
+   ```
+   
+   **Linux/Mac:**
+   ```bash
+   export CITYSCAPES_USERNAME="your_email@example.com"
+   export CITYSCAPES_PASSWORD="your_password"
+   ```
+
+3. Run training (downloads automatically ~11GB):
+   ```bash
+   python train.py
+   ```
+
+**Manual Download (Alternative):**
+1. Download `leftImg8bit_trainvaltest.zip` from https://www.cityscapes-dataset.com/downloads/
+2. Extract to `./data/cityscapes/`
+3. Run: `python train.py`
+
+#### Option 2: COCO (Auto-downloads, No Registration)
+
+COCO provides diverse outdoor scenes and downloads automatically without any registration:
+
 ```bash
-python train.py
+python train.py --dataset coco
 ```
 
-This will:
-1. Download the COCO 2017 dataset (~18GB for training, ~1GB for validation)
-2. Create simulated IR/visible image pairs
-3. Train the model for 100 epochs
-4. Save checkpoints, visualizations, and logs to `./outputs/`
+This will download COCO 2017 (~18GB for training, ~1GB for validation) on first run.
+
+### What Happens During Training
+
+The training process:
+1. Loads images from the selected dataset
+2. Creates simulated IR/visible image pairs (see Training Data Simulation below)
+3. Trains the model for 100 epochs (configurable)
+4. Saves checkpoints, visualizations, and logs to `./outputs/`
 
 ### Training Data Simulation
 
@@ -100,6 +143,7 @@ Edit `config.py` to adjust hyperparameters:
 # Key settings to modify:
 
 # Data settings
+dataset_name = "cityscapes"    # Options: 'cityscapes', 'coco'
 crop_ratio_range = (0.4, 0.7)  # FOV difference simulation
 ir_image_size = (256, 256)     # Network input size
 
@@ -115,13 +159,16 @@ learning_rate = 1e-4
 # Loss weights (tune these for your use case)
 l1_weight = 1.0                 # Pixel accuracy
 perceptual_weight = 0.5         # Perceptual quality
-style_weight = 50.0             # Color transfer from reference
+style_weight = 10.0             # Color transfer from reference
 histogram_weight = 0.1          # Global color distribution
 ```
 
 ### Command Line Options
 
 ```bash
+# Use COCO instead of Cityscapes
+python train.py --dataset coco
+
 # Resume from checkpoint
 python train.py --resume outputs/checkpoints/epoch_050.pt
 
@@ -130,6 +177,9 @@ python train.py --epochs 200 --batch-size 16 --lr 5e-5
 
 # Custom output directory
 python train.py --output ./my_experiment
+
+# Combine options
+python train.py --dataset coco --epochs 50 --batch-size 4
 ```
 
 ### Monitoring Training

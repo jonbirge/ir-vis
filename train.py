@@ -611,6 +611,11 @@ def main():
         '--lr', type=float, default=None,
         help="Learning rate override"
     )
+    parser.add_argument(
+        '--dataset', type=str, default=None,
+        choices=['cityscapes', 'coco'],
+        help="Dataset to use: 'cityscapes' (default, requires manual download) or 'coco' (auto-downloads)"
+    )
     
     args = parser.parse_args()
     
@@ -628,6 +633,8 @@ def main():
         config.training.batch_size = args.batch_size
     if args.lr:
         config.training.learning_rate = args.lr
+    if args.dataset:
+        config.data.dataset_name = args.dataset
     
     # Run training
     train(config)

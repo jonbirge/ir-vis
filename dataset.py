@@ -16,14 +16,19 @@ The key insight for training data generation:
 - To simulate perspective/FOV differences, we take a random crop of the original
   image as the "IR" view, while using the full image as the color reference.
   This forces the network to learn robust feature matching across viewpoints.
+
+Supported datasets:
+- Cityscapes: European urban street scenes (requires free registration)
+- COCO: Diverse outdoor scenes (auto-downloads)
 """
 
 import os
+import sys
 import random
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any, List
+from typing import Tuple, Optional, Dict, Any, List, Union
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -33,6 +38,278 @@ from PIL import Image
 import numpy as np
 
 from config import Config, DataConfig
+
+
+class CityscapesLoader:
+    """
+    Utility class to load and optionally download Cityscapes dataset.
+    
+    Cityscapes contains 5000 finely annotated images from 50 different cities,
+    with high-quality 2048x1024 resolution images of urban street scenes.
+    
+    Automatic download requires:
+    1. Free registration at https://www.cityscapes-dataset.com/
+    2. Setting environment variables:
+       - CITYSCAPES_USERNAME (your email)
+       - CITYSCAPES_PASSWORD (your password)
+    
+    Alternatively, download manually:
+    - leftImg8bit_trainvaltest.zip (11GB) from the website
+    - Extract to data_root/cityscapes/
+    """
+    
+    DOWNLOAD_INSTRUCTIONS = """
+    ╔══════════════════════════════════════════════════════════════════════╗
+    ║                    CITYSCAPES DATASET SETUP                         ║
+    ╠══════════════════════════════════════════════════════════════════════╣
+    ║ Cityscapes requires free registration to download.                  ║
+    ║                                                                      ║
+    ║ OPTION 1: Automatic Download (Recommended)                          ║
+    ║ ──────────────────────────────────────────                          ║
+    ║ 1. Register at: https://www.cityscapes-dataset.com/register/        ║
+    ║ 2. Set environment variables:                                       ║
+    ║    Windows (PowerShell):                                            ║
+    ║      $env:CITYSCAPES_USERNAME = "your_email@example.com"            ║
+    ║      $env:CITYSCAPES_PASSWORD = "your_password"                     ║
+    ║    Windows (CMD):                                                   ║
+    ║      set CITYSCAPES_USERNAME=your_email@example.com                 ║
+    ║      set CITYSCAPES_PASSWORD=your_password                          ║
+    ║    Linux/Mac:                                                       ║
+    ║      export CITYSCAPES_USERNAME="your_email@example.com"            ║
+    ║      export CITYSCAPES_PASSWORD="your_password"                     ║
+    ║ 3. Run the training script again                                    ║
+    ║                                                                      ║
+    ║ OPTION 2: Manual Download                                           ║
+    ║ ─────────────────────────                                           ║
+    ║ 1. Register at: https://www.cityscapes-dataset.com/register/        ║
+    ║ 2. Login and go to: https://www.cityscapes-dataset.com/downloads/  ║
+    ║ 3. Download: leftImg8bit_trainvaltest.zip (11GB)                    ║
+    ║ 4. Extract to: {data_root}/cityscapes/                              ║
+    ║                                                                      ║
+    ║ Expected structure after extraction:                                 ║
+    ║   {data_root}/cityscapes/leftImg8bit/train/aachen/...               ║
+    ║   {data_root}/cityscapes/leftImg8bit/val/frankfurt/...              ║
+    ║                                                                      ║
+    ║ OPTION 3: Use COCO instead (auto-downloads, no registration)        ║
+    ║ ────────────────────────────────────────────────────────            ║
+    ║   python train.py --dataset coco                                    ║
+    ╚══════════════════════════════════════════════════════════════════════╝
+    """
+    
+    def __init__(self, data_root: str):
+        """
+        Initialize the Cityscapes loader.
+        
+        Args:
+            data_root: Root directory where data is stored
+        """
+        self.data_root = Path(data_root)
+        self.cityscapes_root = self.data_root / "cityscapes"
+        self.leftimg_root = self.cityscapes_root / "leftImg8bit"
+        
+    def check_exists(self) -> bool:
+        """Check if Cityscapes dataset exists."""
+        train_dir = self.leftimg_root / "train"
+        val_dir = self.leftimg_root / "val"
+        
+        if not train_dir.exists() or not val_dir.exists():
+            return False
+        
+        # Check that there are actually images
+        train_images = list(train_dir.glob("*/*_leftImg8bit.png"))
+        return len(train_images) > 0
+    
+    def download(self) -> bool:
+        """
+        Download Cityscapes dataset using cityscapesscripts.
+        
+        Requires CITYSCAPES_USERNAME and CITYSCAPES_PASSWORD environment variables.
+        
+        Returns:
+            True if download successful, False otherwise
+        """
+        username = os.environ.get('CITYSCAPES_USERNAME')
+        password = os.environ.get('CITYSCAPES_PASSWORD')
+        
+        if not username or not password:
+            print("\nCityscapes credentials not found in environment variables.")
+            print(self.DOWNLOAD_INSTRUCTIONS.format(data_root=self.data_root))
+            return False
+        
+        try:
+            # Try to import cityscapesscripts
+            from cityscapesscripts.download import downloader
+        except ImportError:
+            print("\nInstalling cityscapesscripts package for automatic download...")
+            import subprocess
+            subprocess.check_call([
+                sys.executable, '-m', 'pip', 'install', 
+                'cityscapesscripts', '--quiet'
+            ])
+            from cityscapesscripts.download import downloader
+        
+        # Create destination directory
+        self.cityscapes_root.mkdir(parents=True, exist_ok=True)
+        
+        print(f"\nDownloading Cityscapes to {self.cityscapes_root}...")
+        print("This may take a while (leftImg8bit is ~11GB)...")
+        
+        try:
+            # The downloader expects to be run from the destination directory
+            # or we can set the destination
+            session = downloader.login(username, password)
+            if session is None:
+                print("ERROR: Failed to login to Cityscapes. Check your credentials.")
+                return False
+            
+            # Download leftImg8bit package (the RGB images)
+            # Package ID for leftImg8bit_trainvaltest.zip
+            downloader.download_packages(
+                session=session,
+                package_names=['leftImg8bit_trainvaltest.zip'],
+                destination_path=str(self.cityscapes_root)
+            )
+            
+            print("Download complete! Extracting...")
+            
+            # Extract the zip file
+            zip_path = self.cityscapes_root / "leftImg8bit_trainvaltest.zip"
+            if zip_path.exists():
+                import zipfile
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(self.cityscapes_root)
+                print("Extraction complete!")
+                
+                # Optionally remove zip to save space
+                # zip_path.unlink()
+                
+            return self.check_exists()
+            
+        except Exception as e:
+            print(f"\nERROR during download: {e}")
+            print("\nTrying alternative download method...")
+            return self._download_alternative(username, password)
+    
+    def _download_alternative(self, username: str, password: str) -> bool:
+        """
+        Alternative download method using direct HTTP requests.
+        
+        Args:
+            username: Cityscapes username (email)
+            password: Cityscapes password
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        import requests
+        from tqdm import tqdm
+        
+        print("\nUsing alternative download method...")
+        
+        # Cityscapes login and download URLs
+        login_url = "https://www.cityscapes-dataset.com/login/"
+        download_url = "https://www.cityscapes-dataset.com/file-handling/?packageID=3"
+        
+        session = requests.Session()
+        
+        try:
+            # Get CSRF token
+            response = session.get(login_url)
+            
+            # Try to find CSRF token in cookies or response
+            csrf_token = session.cookies.get('csrftoken', '')
+            
+            # Login
+            login_data = {
+                'username': username,
+                'password': password,
+                'csrfmiddlewaretoken': csrf_token,
+                'next': '/'
+            }
+            
+            headers = {
+                'Referer': login_url,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            response = session.post(login_url, data=login_data, headers=headers)
+            
+            if 'logout' not in response.text.lower() and 'sign out' not in response.text.lower():
+                print("Login may have failed. Attempting download anyway...")
+            
+            # Download the file
+            print("Downloading leftImg8bit_trainvaltest.zip (~11GB)...")
+            
+            self.cityscapes_root.mkdir(parents=True, exist_ok=True)
+            zip_path = self.cityscapes_root / "leftImg8bit_trainvaltest.zip"
+            
+            response = session.get(download_url, stream=True, headers=headers)
+            
+            if response.status_code != 200:
+                print(f"Download failed with status code: {response.status_code}")
+                return False
+            
+            total_size = int(response.headers.get('content-length', 0))
+            
+            with open(zip_path, 'wb') as f:
+                with tqdm(total=total_size, unit='B', unit_scale=True, desc="Downloading") as pbar:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            pbar.update(len(chunk))
+            
+            print("Download complete! Extracting...")
+            
+            # Extract
+            import zipfile
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(self.cityscapes_root)
+            
+            print("Extraction complete!")
+            return self.check_exists()
+            
+        except Exception as e:
+            print(f"Alternative download failed: {e}")
+            print(self.DOWNLOAD_INSTRUCTIONS.format(data_root=self.data_root))
+            return False
+    
+    def get_image_paths(self, split: str = "train") -> List[Path]:
+        """
+        Get all image paths for a given split.
+        
+        Cityscapes organizes images by city, so we need to traverse subdirectories.
+        
+        Args:
+            split: 'train', 'val', or 'test'
+            
+        Returns:
+            List of paths to all images in the split
+        """
+        split_dir = self.leftimg_root / split
+        
+        if not split_dir.exists():
+            raise FileNotFoundError(
+                f"Cityscapes {split} split not found at {split_dir}."
+            )
+        
+        # Find all images across city subdirectories
+        image_paths = []
+        for city_dir in split_dir.iterdir():
+            if city_dir.is_dir():
+                for img_path in city_dir.glob("*_leftImg8bit.png"):
+                    image_paths.append(img_path)
+        
+        image_paths.sort()
+        print(f"Found {len(image_paths)} Cityscapes {split} images")
+        return image_paths
+    
+    def get_train_paths(self) -> List[Path]:
+        """Get training image paths."""
+        return self.get_image_paths("train")
+    
+    def get_val_paths(self) -> List[Path]:
+        """Get validation image paths."""
+        return self.get_image_paths("val")
 
 
 class COCODownloader:
@@ -134,7 +411,7 @@ class IRColorPairDataset(Dataset):
     
     def __init__(
         self,
-        image_dir: str,
+        image_source: Union[str, List[Path]],
         config: DataConfig,
         is_training: bool = True,
         max_samples: Optional[int] = None
@@ -143,21 +420,26 @@ class IRColorPairDataset(Dataset):
         Initialize the dataset.
         
         Args:
-            image_dir: Directory containing the images
+            image_source: Either a directory path (str) or list of image paths
             config: Data configuration object
             is_training: Whether this is training (enables augmentation)
             max_samples: Optional limit on number of samples (for debugging)
         """
-        self.image_dir = Path(image_dir)
         self.config = config
         self.is_training = is_training
         
-        # Get list of all image files
-        valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
-        self.image_paths = [
-            p for p in self.image_dir.iterdir()
-            if p.suffix.lower() in valid_extensions
-        ]
+        # Handle both directory path and list of paths
+        if isinstance(image_source, (str, Path)):
+            image_dir = Path(image_source)
+            # Get list of all image files
+            valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
+            self.image_paths = [
+                p for p in image_dir.iterdir()
+                if p.suffix.lower() in valid_extensions
+            ]
+        else:
+            # Assume it's a list of paths
+            self.image_paths = list(image_source)
         
         # Sort for reproducibility
         self.image_paths.sort()
@@ -166,7 +448,7 @@ class IRColorPairDataset(Dataset):
         if max_samples is not None:
             self.image_paths = self.image_paths[:max_samples]
             
-        print(f"Found {len(self.image_paths)} images in {image_dir}")
+        print(f"Dataset initialized with {len(self.image_paths)} images")
         
         # Setup transforms
         self._setup_transforms()
@@ -371,9 +653,13 @@ def get_dataloaders(config: Config) -> Tuple[DataLoader, DataLoader]:
     Create training and validation dataloaders.
     
     This function handles:
-    1. Downloading the dataset if needed
+    1. Loading/downloading the dataset based on config
     2. Creating train/val dataset objects
     3. Wrapping them in DataLoaders with appropriate settings
+    
+    Supported datasets:
+    - 'cityscapes': European urban scenes (requires manual download)
+    - 'coco': COCO 2017 (auto-downloads)
     
     Args:
         config: Complete configuration object
@@ -384,26 +670,63 @@ def get_dataloaders(config: Config) -> Tuple[DataLoader, DataLoader]:
     data_config = config.data
     training_config = config.training
     
-    # Download dataset if needed
-    if data_config.dataset_name == "coco":
+    dataset_name = data_config.dataset_name.lower()
+    
+    if dataset_name == "cityscapes":
+        # Load Cityscapes dataset
+        loader = CityscapesLoader(data_config.data_root)
+        
+        if not loader.check_exists():
+            print("\nCityscapes dataset not found. Attempting to download...")
+            success = loader.download()
+            
+            if not success:
+                raise FileNotFoundError(
+                    "Could not download Cityscapes dataset. "
+                    "Please follow the instructions above to set up credentials or download manually, "
+                    "or use --dataset coco for automatic download without registration."
+                )
+        
+        train_paths = loader.get_train_paths()
+        val_paths = loader.get_val_paths()
+        
+        # Create datasets with path lists
+        train_dataset = IRColorPairDataset(
+            image_source=train_paths,
+            config=data_config,
+            is_training=True
+        )
+        
+        val_dataset = IRColorPairDataset(
+            image_source=val_paths,
+            config=data_config,
+            is_training=False
+        )
+        
+    elif dataset_name == "coco":
+        # Download and load COCO dataset
         downloader = COCODownloader(data_config.data_root)
         train_dir = downloader.download_train()
         val_dir = downloader.download_val()
+        
+        # Create datasets with directory paths
+        train_dataset = IRColorPairDataset(
+            image_source=str(train_dir),
+            config=data_config,
+            is_training=True
+        )
+        
+        val_dataset = IRColorPairDataset(
+            image_source=str(val_dir),
+            config=data_config,
+            is_training=False
+        )
+        
     else:
-        raise ValueError(f"Unknown dataset: {data_config.dataset_name}")
-    
-    # Create datasets
-    train_dataset = IRColorPairDataset(
-        image_dir=str(train_dir),
-        config=data_config,
-        is_training=True
-    )
-    
-    val_dataset = IRColorPairDataset(
-        image_dir=str(val_dir),
-        config=data_config,
-        is_training=False
-    )
+        raise ValueError(
+            f"Unknown dataset: {dataset_name}. "
+            f"Supported datasets: 'cityscapes', 'coco'"
+        )
     
     # Create dataloaders
     train_loader = DataLoader(

@@ -34,8 +34,10 @@ class DataConfig:
     # Root directory for downloaded datasets
     data_root: str = "./data"
     
-    # Dataset to use: 'coco' (COCO 2017), 'places' (Places365-small)
-    # COCO is recommended as it has excellent outdoor scene coverage
+    # Dataset to use: 'cityscapes' (European cities), 'coco' (COCO 2017)
+    # Cityscapes is recommended for urban/outdoor scenes with consistent quality
+    # Note: Cityscapes requires manual download after free registration at:
+    #       https://www.cityscapes-dataset.com/
     dataset_name: str = "coco"
     
     # Image dimensions for network input
@@ -59,10 +61,10 @@ class DataConfig:
     
     # Augmentation parameters
     random_horizontal_flip: bool = True
-    color_jitter_brightness: float = 0.1
-    color_jitter_contrast: float = 0.1
-    color_jitter_saturation: float = 0.1
-    color_jitter_hue: float = 0.05
+    color_jitter_brightness: float = 0.15
+    color_jitter_contrast: float = 0.15
+    color_jitter_saturation: float = 0.15
+    color_jitter_hue: float = 0.1
 
 
 @dataclass
@@ -171,10 +173,10 @@ class TrainingConfig:
     # RTX 3090 (24GB): batch_size=16 should work
     # RTX 4090 (24GB): batch_size=16-20
     # A100 (40GB): batch_size=32
-    batch_size: int = 8
+    batch_size: int = 10
     
     # Number of training epochs
-    num_epochs: int = 100
+    num_epochs: int = 32
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
