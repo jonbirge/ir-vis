@@ -83,7 +83,8 @@ class IRColorizer:
         print(f"Loading model from {checkpoint_path}")
         
         # Load checkpoint to get config
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        # weights_only=False is needed to load Config dataclass
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         
         # Create model with saved config
         if 'config' in checkpoint:

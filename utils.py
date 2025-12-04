@@ -114,7 +114,9 @@ def load_checkpoint(
     """
     print(f"Loading checkpoint from {filepath}")
     
-    checkpoint = torch.load(filepath, map_location=device)
+    # weights_only=False is needed to load Config dataclass
+    # Only use this with trusted checkpoint files
+    checkpoint = torch.load(filepath, map_location=device, weights_only=False)
     
     # Load model weights
     model.load_state_dict(checkpoint['model_state_dict'])

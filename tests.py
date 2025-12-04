@@ -301,18 +301,22 @@ class TestLosses(unittest.TestCase):
         
         loss_fn = CombinedLoss(self.config.loss).to(self.device)
         
-        pred = torch.randn(2, 3, 128, 128, requires_grad=True).to(self.device)
-        target = torch.randn(2, 3, 128, 128).to(self.device)
+        # Create a simple tensor that requires grad
+        # Use a small size for speed
+        pred = torch.randn(2, 3, 64, 64, device=self.device, requires_grad=True)
         
-        # Clamp while preserving gradients
-        pred_clamped = pred.clamp(-1, 1)
-        target_clamped = target.clamp(-1, 1)
+        # Apply tanh to get [-1, 1] range while preserving gradients
+        pred_clamped = torch.tanh(pred)
         
-        total_loss, _ = loss_fn(pred_clamped, target_clamped)
+        # Target doesn't need gradients
+        target = torch.tanh(torch.randn(2, 3, 64, 64, device=self.device))
+        
+        total_loss, _ = loss_fn(pred_clamped, target)
         total_loss.backward()
         
-        self.assertIsNotNone(pred.grad)
-        self.assertFalse(torch.isnan(pred.grad).any())
+        self.assertIsNotNone(pred.grad, "Gradient should not be None")
+        self.assertFalse(torch.isnan(pred.grad).any(), "Gradient should not contain NaN")
+        self.assertTrue((pred.grad.abs() > 0).any(), "Gradients should be non-zero somewhere")
 
 
 class TestUtils(unittest.TestCase):

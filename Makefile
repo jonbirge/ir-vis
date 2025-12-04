@@ -30,7 +30,7 @@ endif
 .PHONY: help setup venv install train train-coco train-cityscapes \
         clean clean-checkpoints clean-visualizations clean-logs clean-data \
         test test-model test-dataset test-losses lint format \
-        inference tensorboard
+        inference tensorboard check
 
 # Default target
 help:
@@ -184,9 +184,13 @@ inference-batch:
 # Testing Targets
 # ============================================================
 
-test:
+test: 
 	@echo Running all tests...
 	$(VENV_PYTHON) tests.py
+
+check: test
+	@echo.
+	@echo All checks passed!
 
 test-model:
 	@echo Testing model architecture...
