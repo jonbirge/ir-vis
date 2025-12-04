@@ -31,7 +31,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
-from tqdm import tqdm
+from tqdm import tqdm # type: ignore
 
 from config import Config, get_config
 from dataset import get_dataloaders, denormalize

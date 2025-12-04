@@ -20,8 +20,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt # type: ignore
+import matplotlib.gridspec as gridspec # type: ignore
 
 
 def set_seed(seed: int) -> None:

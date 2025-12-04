@@ -29,7 +29,7 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 from PIL import Image
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm # type: ignore
 
 from config import get_config, ModelConfig
 from model import IRColorNet, create_model
@@ -299,7 +299,7 @@ def create_comparison_figure(
         result_image: Colorized result
         output_path: Path to save the figure
     """
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt # type: ignore
     
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     

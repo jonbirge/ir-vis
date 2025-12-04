@@ -138,7 +138,7 @@ class CityscapesLoader:
         
         try:
             # Try to import cityscapesscripts
-            from cityscapesscripts.download import downloader
+            from cityscapesscripts.download import downloader # type: ignore
         except ImportError:
             print("\nInstalling cityscapesscripts package for automatic download...")
             import subprocess
@@ -146,7 +146,7 @@ class CityscapesLoader:
                 sys.executable, '-m', 'pip', 'install', 
                 'cityscapesscripts', '--quiet'
             ])
-            from cityscapesscripts.download import downloader
+            from cityscapesscripts.download import downloader # type: ignore
         
         # Create destination directory
         self.cityscapes_root.mkdir(parents=True, exist_ok=True)
@@ -201,8 +201,8 @@ class CityscapesLoader:
         Returns:
             True if successful, False otherwise
         """
-        import requests
-        from tqdm import tqdm
+        import requests # type: ignore
+        from tqdm import tqdm # type: ignore
         
         print("\nUsing alternative download method...")
         
