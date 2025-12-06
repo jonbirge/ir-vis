@@ -1,0 +1,386 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1400" font-family="Arial, sans-serif">
+  <!-- Title -->
+  <text x="800" y="35" font-size="26" font-weight="bold" text-anchor="middle" fill="#2c3e50">
+    Multi-Head Cross-Attention: Detailed Architecture
+  </text>
+  <text x="800" y="60" font-size="14" text-anchor="middle" fill="#7f8c8d">
+    Parallel processing across 8 attention heads - all heads compute simultaneously
+  </text>
+  
+  <!-- Input Features Section -->
+  <g id="inputs">
+    <!-- IR Content Features -->
+    <rect x="50" y="100" width="280" height="140" rx="10" fill="#e74c3c" stroke="#c0392b" stroke-width="3"/>
+    <text x="190" y="130" font-size="16" font-weight="bold" text-anchor="middle" fill="#fff">IR Content Features</text>
+    <text x="190" y="152" font-size="12" text-anchor="middle" fill="#ecf0f1">(Query Source)</text>
+    <text x="190" y="180" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Shape: [B, 512, 8, 8]</text>
+    <text x="190" y="202" font-size="11" text-anchor="middle" fill="#ecf0f1">B = batch size</text>
+    <text x="190" y="218" font-size="11" text-anchor="middle" fill="#ecf0f1">512 = channels (feature dim)</text>
+    <text x="190" y="234" font-size="11" text-anchor="middle" fill="#ecf0f1">8×8 = 64 spatial positions</text>
+    
+    <!-- Reference Features -->
+    <rect x="50" y="280" width="280" height="140" rx="10" fill="#3498db" stroke="#2980b9" stroke-width="3"/>
+    <text x="190" y="310" font-size="16" font-weight="bold" text-anchor="middle" fill="#fff">Reference Features</text>
+    <text x="190" y="332" font-size="12" text-anchor="middle" fill="#ecf0f1">(Key/Value Source)</text>
+    <text x="190" y="360" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Shape: [B, 512, 8, 8]</text>
+    <text x="190" y="382" font-size="11" text-anchor="middle" fill="#ecf0f1">B = batch size</text>
+    <text x="190" y="398" font-size="11" text-anchor="middle" fill="#ecf0f1">512 = channels (feature dim)</text>
+    <text x="190" y="414" font-size="11" text-anchor="middle" fill="#ecf0f1">8×8 = 64 spatial positions</text>
+  </g>
+  
+  <!-- Flatten Spatial Dimensions -->
+  <g id="flatten">
+    <rect x="380" y="120" width="180" height="100" rx="8" fill="#95a5a6" stroke="#7f8c8d" stroke-width="2"/>
+    <text x="470" y="145" font-size="13" font-weight="bold" text-anchor="middle" fill="#fff">Flatten Spatial</text>
+    <text x="470" y="165" font-size="12" text-anchor="middle" fill="#ecf0f1">Reshape Operation:</text>
+    <text x="470" y="182" font-size="11" text-anchor="middle" fill="#fff">[B, 512, 8, 8]</text>
+    <text x="470" y="197" font-size="11" text-anchor="middle" fill="#fff">↓</text>
+    <text x="470" y="212" font-size="11" text-anchor="middle" fill="#fff">[B, 64, 512]</text>
+    
+    <rect x="380" y="300" width="180" height="100" rx="8" fill="#95a5a6" stroke="#7f8c8d" stroke-width="2"/>
+    <text x="470" y="325" font-size="13" font-weight="bold" text-anchor="middle" fill="#fff">Flatten Spatial</text>
+    <text x="470" y="345" font-size="12" text-anchor="middle" fill="#ecf0f1">Reshape Operation:</text>
+    <text x="470" y="362" font-size="11" text-anchor="middle" fill="#fff">[B, 512, 8, 8]</text>
+    <text x="470" y="377" font-size="11" text-anchor="middle" fill="#fff">↓</text>
+    <text x="470" y="392" font-size="11" text-anchor="middle" fill="#fff">[B, 64, 512]</text>
+  </g>
+  
+  <!-- Linear Projections -->
+  <g id="projections">
+    <!-- Query Projection -->
+    <rect x="610" y="120" width="200" height="100" rx="8" fill="#9b59b6" stroke="#8e44ad" stroke-width="3"/>
+    <text x="710" y="145" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Query Projection</text>
+    <text x="710" y="165" font-size="11" text-anchor="middle" fill="#ecf0f1">W_q: Linear(512 → 512)</text>
+    <text x="710" y="182" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">Q = W_q(IR_flat)</text>
+    <text x="710" y="200" font-size="11" text-anchor="middle" fill="#ecf0f1">Output: [B, 64, 512]</text>
+    <text x="710" y="215" font-size="10" text-anchor="middle" fill="#ecf0f1">64 query positions</text>
+    
+    <!-- Key Projection -->
+    <rect x="610" y="250" width="200" height="100" rx="8" fill="#9b59b6" stroke="#8e44ad" stroke-width="3"/>
+    <text x="710" y="275" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Key Projection</text>
+    <text x="710" y="295" font-size="11" text-anchor="middle" fill="#ecf0f1">W_k: Linear(512 → 512)</text>
+    <text x="710" y="312" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">K = W_k(Ref_flat)</text>
+    <text x="710" y="330" font-size="11" text-anchor="middle" fill="#ecf0f1">Output: [B, 64, 512]</text>
+    <text x="710" y="345" font-size="10" text-anchor="middle" fill="#ecf0f1">64 key positions</text>
+    
+    <!-- Value Projection -->
+    <rect x="610" y="380" width="200" height="100" rx="8" fill="#9b59b6" stroke="#8e44ad" stroke-width="3"/>
+    <text x="710" y="405" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Value Projection</text>
+    <text x="710" y="425" font-size="11" text-anchor="middle" fill="#ecf0f1">W_v: Linear(512 → 512)</text>
+    <text x="710" y="442" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">V = W_v(Ref_flat)</text>
+    <text x="710" y="460" font-size="11" text-anchor="middle" fill="#ecf0f1">Output: [B, 64, 512]</text>
+    <text x="710" y="475" font-size="10" text-anchor="middle" fill="#ecf0f1">64 value positions</text>
+  </g>
+  
+  <!-- Split into Multiple Heads -->
+  <g id="split-heads">
+    <rect x="860" y="100" width="240" height="400" rx="10" fill="#e67e22" stroke="#d35400" stroke-width="3"/>
+    <text x="980" y="130" font-size="15" font-weight="bold" text-anchor="middle" fill="#fff">Split into 8 Heads</text>
+    <text x="980" y="150" font-size="11" text-anchor="middle" fill="#ecf0f1">(Parallel Processing)</text>
+    
+    <!-- Reshape explanation -->
+    <text x="980" y="180" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">Reshape Operation:</text>
+    <text x="980" y="200" font-size="11" text-anchor="middle" fill="#ecf0f1">[B, 64, 512] → [B, 64, 8, 64]</text>
+    <text x="980" y="218" font-size="11" text-anchor="middle" fill="#ecf0f1">Transpose: [B, 8, 64, 64]</text>
+    
+    <!-- Visual representation of heads -->
+    <text x="875" y="250" font-size="11" font-weight="bold" fill="#fff">8 Attention Heads:</text>
+    
+    <rect x="875" y="260" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="925" y="280" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 0</text>
+    <text x="925" y="292" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 0-63</text>
+    
+    <rect x="985" y="260" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="1035" y="280" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 1</text>
+    <text x="1035" y="292" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 64-127</text>
+    
+    <rect x="875" y="305" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="925" y="325" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 2</text>
+    <text x="925" y="337" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 128-191</text>
+    
+    <rect x="985" y="305" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="1035" y="325" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 3</text>
+    <text x="1035" y="337" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 192-255</text>
+    
+    <rect x="875" y="350" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="925" y="370" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 4</text>
+    <text x="925" y="382" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 256-319</text>
+    
+    <rect x="985" y="350" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="1035" y="370" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 5</text>
+    <text x="1035" y="382" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 320-383</text>
+    
+    <rect x="875" y="395" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="925" y="415" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 6</text>
+    <text x="925" y="427" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 384-447</text>
+    
+    <rect x="985" y="395" width="100" height="35" rx="4" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+    <text x="1035" y="415" font-size="10" text-anchor="middle" fill="#fff" font-weight="bold">Head 7</text>
+    <text x="1035" y="427" font-size="8" text-anchor="middle" fill="#ecf0f1">dims 448-511</text>
+    
+    <text x="980" y="455" font-size="10" font-weight="bold" text-anchor="middle" fill="#fff">Each head: [B, 64_q, 64_dim]</text>
+    <text x="980" y="472" font-size="9" text-anchor="middle" fill="#ecf0f1">All 8 heads process in parallel</text>
+    <text x="980" y="487" font-size="9" text-anchor="middle" fill="#ecf0f1">(single batched matrix multiply)</text>
+  </g>
+  
+  <!-- Attention Computation - Detailed -->
+  <g id="attention-detail">
+    <rect x="50" y="550" width="1050" height="340" rx="10" fill="#1abc9c" stroke="#16a085" stroke-width="4"/>
+    <text x="575" y="585" font-size="18" font-weight="bold" text-anchor="middle" fill="#fff">
+      Parallel Attention Computation (All 8 Heads Simultaneously)
+    </text>
+    
+    <!-- Step 1: Attention Scores -->
+    <g id="step1">
+      <rect x="70" y="605" width="310" height="120" rx="6" fill="#48c9b0" stroke="#16a085" stroke-width="2"/>
+      <text x="225" y="628" font-size="13" font-weight="bold" text-anchor="middle" fill="#fff">Step 1: Compute Attention Scores</text>
+      
+      <text x="80" y="652" font-size="11" font-weight="bold" fill="#fff">scores = Q @ K^T / √d_k</text>
+      <text x="80" y="670" font-size="10" fill="#ecf0f1">Q: [B, 8, 64, 64] (queries)</text>
+      <text x="80" y="686" font-size="10" fill="#ecf0f1">K^T: [B, 8, 64, 64] (keys transposed)</text>
+      <text x="80" y="702" font-size="10" fill="#ecf0f1">d_k = 64 (head dimension)</text>
+      <text x="80" y="718" font-size="11" font-weight="bold" fill="#fff">→ scores: [B, 8, 64, 64]</text>
+    </g>
+    
+    <!-- Step 2: Softmax -->
+    <g id="step2">
+      <rect x="395" y="605" width="310" height="120" rx="6" fill="#48c9b0" stroke="#16a085" stroke-width="2"/>
+      <text x="550" y="628" font-size="13" font-weight="bold" text-anchor="middle" fill="#fff">Step 2: Apply Softmax</text>
+      
+      <text x="405" y="652" font-size="11" font-weight="bold" fill="#fff">attn_weights = softmax(scores, dim=-1)</text>
+      <text x="405" y="670" font-size="10" fill="#ecf0f1">Normalize across key dimension</text>
+      <text x="405" y="686" font-size="10" fill="#ecf0f1">Each query gets probability dist</text>
+      <text x="405" y="702" font-size="10" fill="#ecf0f1">over all 64 key positions</text>
+      <text x="405" y="718" font-size="11" font-weight="bold" fill="#fff">→ weights: [B, 8, 64, 64]</text>
+    </g>
+    
+    <!-- Step 3: Apply to Values -->
+    <g id="step3">
+      <rect x="720" y="605" width="360" height="120" rx="6" fill="#48c9b0" stroke="#16a085" stroke-width="2"/>
+      <text x="900" y="628" font-size="13" font-weight="bold" text-anchor="middle" fill="#fff">Step 3: Apply Attention to Values</text>
+      
+      <text x="730" y="652" font-size="11" font-weight="bold" fill="#fff">output = attn_weights @ V</text>
+      <text x="730" y="670" font-size="10" fill="#ecf0f1">attn_weights: [B, 8, 64_q, 64_k]</text>
+      <text x="730" y="686" font-size="10" fill="#ecf0f1">V: [B, 8, 64_k, 64_dim]</text>
+      <text x="730" y="702" font-size="10" fill="#ecf0f1">Weighted sum of value vectors</text>
+      <text x="730" y="718" font-size="11" font-weight="bold" fill="#fff">→ output: [B, 8, 64_q, 64_dim]</text>
+    </g>
+    
+    <!-- Attention Matrix Visualization -->
+    <g id="attn-matrix-viz">
+      <rect x="70" y="745" width="240" height="130" rx="6" fill="#2c3e50" stroke="#1abc9c" stroke-width="2"/>
+      <text x="190" y="768" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">Attention Matrix</text>
+      <text x="190" y="785" font-size="10" text-anchor="middle" fill="#ecf0f1">(One Head, One Batch)</text>
+      
+      <!-- Grid representing attention -->
+      <g id="attn-grid">
+        <rect x="85" y="795" width="8" height="8" fill="#e74c3c" opacity="0.9"/>
+        <rect x="95" y="795" width="8" height="8" fill="#e74c3c" opacity="0.3"/>
+        <rect x="105" y="795" width="8" height="8" fill="#e74c3c" opacity="0.6"/>
+        <rect x="115" y="795" width="8" height="8" fill="#e74c3c" opacity="0.2"/>
+        <rect x="125" y="795" width="8" height="8" fill="#e74c3c" opacity="0.8"/>
+        <text x="140" y="802" font-size="7" fill="#ecf0f1">... 64 keys</text>
+        
+        <rect x="85" y="805" width="8" height="8" fill="#e74c3c" opacity="0.4"/>
+        <rect x="95" y="805" width="8" height="8" fill="#e74c3c" opacity="0.9"/>
+        <rect x="105" y="805" width="8" height="8" fill="#e74c3c" opacity="0.5"/>
+        <rect x="115" y="805" width="8" height="8" fill="#e74c3c" opacity="0.3"/>
+        <rect x="125" y="805" width="8" height="8" fill="#e74c3c" opacity="0.7"/>
+        
+        <text x="75" y="822" font-size="7" fill="#ecf0f1" transform="rotate(-90 75 822)">64 queries</text>
+        
+        <rect x="85" y="815" width="8" height="8" fill="#e74c3c" opacity="0.6"/>
+        <rect x="95" y="815" width="8" height="8" fill="#e74c3c" opacity="0.4"/>
+        <rect x="105" y="815" width="8" height="8" fill="#e74c3c" opacity="0.9"/>
+        <text x="118" y="820" font-size="7" fill="#ecf0f1">...</text>
+      </g>
+      
+      <text x="190" y="845" font-size="9" text-anchor="middle" fill="#ecf0f1">Each cell = attention weight</text>
+      <text x="190" y="860" font-size="9" text-anchor="middle" fill="#ecf0f1">Darker = stronger attention</text>
+    </g>
+    
+    <!-- What each head learns -->
+    <g id="head-specialization">
+      <rect x="330" y="745" width="750" height="130" rx="6" fill="#34495e" stroke="#1abc9c" stroke-width="2"/>
+      <text x="705" y="768" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">
+        What Different Heads Learn (Examples)
+      </text>
+      
+      <text x="345" y="790" font-size="10" fill="#ecf0f1">• <tspan font-weight="bold" fill="#f39c12">Head 0:</tspan> Low-frequency color patterns, overall hue matching</text>
+      <text x="345" y="808" font-size="10" fill="#ecf0f1">• <tspan font-weight="bold" fill="#f39c12">Head 1:</tspan> Edge-aligned features, structural correspondences</text>
+      <text x="345" y="826" font-size="10" fill="#ecf0f1">• <tspan font-weight="bold" fill="#f39c12">Head 2:</tspan> Texture matching (grass, foliage, sky patterns)</text>
+      <text x="345" y="844" font-size="10" fill="#ecf0f1">• <tspan font-weight="bold" fill="#f39c12">Head 3:</tspan> Semantic content (vehicles, buildings, etc.)</text>
+      <text x="345" y="862" font-size="10" fill="#ecf0f1">• <tspan font-weight="bold" fill="#f39c12">Heads 4-7:</tspan> Other diverse correspondence patterns learned during training</text>
+    </g>
+  </g>
+  
+  <!-- Concatenate and Project -->
+  <g id="concat-project">
+    <rect x="1150" y="200" width="280" height="150" rx="10" fill="#27ae60" stroke="#229954" stroke-width="3"/>
+    <text x="1290" y="230" font-size="15" font-weight="bold" text-anchor="middle" fill="#fff">Concatenate Heads</text>
+    
+    <text x="1290" y="258" font-size="12" text-anchor="middle" fill="#ecf0f1">Reshape &amp; Transpose:</text>
+    <text x="1290" y="278" font-size="11" text-anchor="middle" fill="#fff">[B, 8, 64, 64]</text>
+    <text x="1290" y="293" font-size="11" text-anchor="middle" fill="#fff">↓</text>
+    <text x="1290" y="308" font-size="11" text-anchor="middle" fill="#fff">[B, 64, 8×64]</text>
+    <text x="1290" y="323" font-size="11" text-anchor="middle" fill="#fff">= [B, 64, 512]</text>
+    <text x="1290" y="343" font-size="10" text-anchor="middle" fill="#ecf0f1">All head outputs concatenated</text>
+  </g>
+  
+  <g id="output-projection">
+    <rect x="1150" y="380" width="280" height="120" rx="10" fill="#2ecc71" stroke="#27ae60" stroke-width="3"/>
+    <text x="1290" y="410" font-size="15" font-weight="bold" text-anchor="middle" fill="#fff">Output Projection</text>
+    
+    <text x="1290" y="438" font-size="12" text-anchor="middle" fill="#ecf0f1">W_o: Linear(512 → 512)</text>
+    <text x="1290" y="458" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">out = W_o(concat_heads)</text>
+    <text x="1290" y="478" font-size="11" text-anchor="middle" fill="#ecf0f1">Mixes information across heads</text>
+    <text x="1290" y="493" font-size="11" text-anchor="middle" fill="#fff">→ [B, 64, 512]</text>
+  </g>
+  
+  <!-- Final Output -->
+  <g id="final-output">
+    <rect x="1150" y="530" width="280" height="130" rx="10" fill="#16a085" stroke="#138d75" stroke-width="3"/>
+    <text x="1290" y="565" font-size="16" font-weight="bold" text-anchor="middle" fill="#fff">Final Output</text>
+    
+    <text x="1290" y="593" font-size="11" text-anchor="middle" fill="#ecf0f1">Reshape back to spatial:</text>
+    <text x="1290" y="613" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">[B, 64, 512] → [B, 512, 8, 8]</text>
+    <text x="1290" y="635" font-size="11" text-anchor="middle" fill="#ecf0f1">Combined features with:</text>
+    <text x="1290" y="652" font-size="11" text-anchor="middle" fill="#ecf0f1">IR structure + Reference color</text>
+  </g>
+  
+  <!-- Arrows showing flow -->
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <polygon points="0 0, 12 3, 0 6" fill="#2c3e50"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <polygon points="0 0, 12 3, 0 6" fill="#e67e22"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <polygon points="0 0, 12 3, 0 6" fill="#27ae60"/>
+    </marker>
+  </defs>
+  
+  <!-- Flow arrows -->
+  <line x1="330" y1="170" x2="375" y2="170" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="330" y1="350" x2="375" y2="350" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <line x1="560" y1="170" x2="605" y2="170" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="560" y1="350" x2="605" y2="300" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="560" y1="350" x2="605" y2="430" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <line x1="810" y1="170" x2="855" y2="200" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <line x1="810" y1="300" x2="855" y2="300" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <line x1="810" y1="430" x2="855" y2="400" stroke="#2c3e50" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  
+  <path d="M 1100 300 L 1120 300 L 1120 275 L 1145 275" stroke="#e67e22" stroke-width="3" marker-end="url(#arrow-orange)" fill="none"/>
+  
+  <line x1="1290" y1="350" x2="1290" y2="375" stroke="#27ae60" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <line x1="1290" y1="500" x2="1290" y2="525" stroke="#27ae60" stroke-width="3" marker-end="url(#arrow-green)"/>
+  
+  <!-- Parallel processing emphasis -->
+  <g id="parallel-emphasis">
+    <rect x="50" y="930" width="1050" height="180" rx="10" fill="#fff3cd" stroke="#ffc107" stroke-width="3"/>
+    <text x="575" y="965" font-size="18" font-weight="bold" text-anchor="middle" fill="#856404">
+      ⚡ Key Insight: Parallel Processing ⚡
+    </text>
+    
+    <text x="575" y="995" font-size="13" text-anchor="middle" fill="#856404">
+      All 8 attention heads compute <tspan font-weight="bold">simultaneously in a single batched operation</tspan>
+    </text>
+    
+    <text x="70" y="1025" font-size="12" fill="#856404">
+      <tspan font-weight="bold">Not Sequential:</tspan> Heads do NOT operate one after another (would be 8× slower)
+    </text>
+    <text x="70" y="1045" font-size="12" fill="#856404">
+      <tspan font-weight="bold">Parallel GPU Execution:</tspan> PyTorch batches all heads together → single efficient matrix multiply
+    </text>
+    <text x="70" y="1065" font-size="12" fill="#856404">
+      <tspan font-weight="bold">Independent Learning:</tspan> Each head learns different correspondence patterns via separate learned weights
+    </text>
+    <text x="70" y="1085" font-size="12" fill="#856404">
+      <tspan font-weight="bold">Diverse Attention:</tspan> Head 0 might focus on color, Head 1 on edges, Head 2 on texture, etc.
+    </text>
+  </g>
+  
+  <!-- Mathematical Detail -->
+  <g id="math-detail">
+    <rect x="50" y="1140" width="520" height="220" rx="10" fill="#ecf0f1" stroke="#95a5a6" stroke-width="2"/>
+    <text x="310" y="1170" font-size="14" font-weight="bold" text-anchor="middle" fill="#2c3e50">
+      Mathematical Operations (Per Head)
+    </text>
+    
+    <text x="70" y="1200" font-size="11" fill="#34495e">
+      <tspan font-weight="bold">1. Attention Scores:</tspan>
+    </text>
+    <text x="85" y="1218" font-size="10" font-family="monospace" fill="#2c3e50">
+      scores[h] = (Q[h] @ K[h].T) / sqrt(64)
+    </text>
+    <text x="85" y="1233" font-size="9" fill="#7f8c8d">
+      where Q[h], K[h] ∈ ℝ^(64×64) for head h
+    </text>
+    
+    <text x="70" y="1258" font-size="11" fill="#34495e">
+      <tspan font-weight="bold">2. Softmax Normalization:</tspan>
+    </text>
+    <text x="85" y="1276" font-size="10" font-family="monospace" fill="#2c3e50">
+      attn_weights[h,i,j] = exp(scores[h,i,j]) / Σ_k exp(scores[h,i,k])
+    </text>
+    <text x="85" y="1291" font-size="9" fill="#7f8c8d">
+      Each query position i gets probability distribution over all keys
+    </text>
+    
+    <text x="70" y="1316" font-size="11" fill="#34495e">
+      <tspan font-weight="bold">3. Weighted Sum:</tspan>
+    </text>
+    <text x="85" y="1334" font-size="10" font-family="monospace" fill="#2c3e50">
+      output[h] = attn_weights[h] @ V[h]
+    </text>
+    <text x="85" y="1349" font-size="9" fill="#7f8c8d">
+      Output[h,i] = Σ_j (attn_weights[h,i,j] × V[h,j])
+    </text>
+  </g>
+  
+  <!-- Computational Complexity -->
+  <g id="complexity">
+    <rect x="600" y="1140" width="500" height="220" rx="10" fill="#e8f5e9" stroke="#4caf50" stroke-width="2"/>
+    <text x="850" y="1170" font-size="14" font-weight="bold" text-anchor="middle" fill="#1b5e20">
+      Computational Complexity
+    </text>
+    
+    <text x="620" y="1200" font-size="11" fill="#2e7d32">
+      <tspan font-weight="bold">Time Complexity:</tspan>
+    </text>
+    <text x="635" y="1218" font-size="10" fill="#1b5e20">
+      O(N² × d) where N=64 positions, d=512 features
+    </text>
+    <text x="635" y="1233" font-size="9" fill="#4caf50">
+      Dominated by QK^T multiplication: (64×64) × (64×64)
+    </text>
+    
+    <text x="620" y="1258" font-size="11" fill="#2e7d32">
+      <tspan font-weight="bold">Memory:</tspan>
+    </text>
+    <text x="635" y="1276" font-size="10" fill="#1b5e20">
+      Attention matrix: [B, 8, 64, 64] ≈ 32K floats per batch item
+    </text>
+    <text x="635" y="1291" font-size="9" fill="#4caf50">
+      With B=10, 8 heads: ~2.5 MB for attention weights
+    </text>
+    
+    <text x="620" y="1316" font-size="11" fill="#2e7d32">
+      <tspan font-weight="bold">Parallelization Benefit:</tspan>
+    </text>
+    <text x="635" y="1334" font-size="10" fill="#1b5e20">
+      8 heads in parallel ≈ same time as 1 head (on modern GPUs)
+    </text>
+    <text x="635" y="1349" font-size="9" fill="#4caf50">
+      vs. 8× slower if computed sequentially!
+    </text>
+  </g>
+  
+  <!-- Footer -->
+  <text x="800" y="1385" font-size="11" text-anchor="middle" fill="#7f8c8d" font-style="italic">
+    This cross-attention mechanism enables the network to find corresponding regions between IR and reference images despite different viewpoints
+  </text>
+</svg>

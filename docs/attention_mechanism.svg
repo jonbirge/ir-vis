@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="Arial, sans-serif">
+  <!-- Title -->
+  <text x="600" y="35" font-size="24" font-weight="bold" text-anchor="middle" fill="#2c3e50">
+    Cross-Attention Feature Matching Module
+  </text>
+  <text x="600" y="58" font-size="13" text-anchor="middle" fill="#7f8c8d">
+    How the network aligns color information across different viewpoints
+  </text>
+  
+  <!-- Input Features -->
+  <g id="input-features">
+    <!-- IR Content Features -->
+    <rect x="50" y="100" width="200" height="120" rx="8" fill="#e74c3c" stroke="#c0392b" stroke-width="2"/>
+    <text x="150" y="130" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">IR Content Features</text>
+    <text x="150" y="150" font-size="11" text-anchor="middle" fill="#ecf0f1">From Content Encoder</text>
+    <text x="150" y="175" font-size="12" text-anchor="middle" fill="#fff">Shape: [B, 512, 8, 8]</text>
+    <text x="150" y="195" font-size="10" text-anchor="middle" fill="#ecf0f1">64 spatial positions</text>
+    <text x="150" y="210" font-size="10" text-anchor="middle" fill="#ecf0f1">512-dim features</text>
+    
+    <!-- Reference Features -->
+    <rect x="50" y="280" width="200" height="120" rx="8" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+    <text x="150" y="310" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Reference Features</text>
+    <text x="150" y="330" font-size="11" text-anchor="middle" fill="#ecf0f1">From Reference Encoder</text>
+    <text x="150" y="355" font-size="12" text-anchor="middle" fill="#fff">Shape: [B, 512, 8, 8]</text>
+    <text x="150" y="375" font-size="10" text-anchor="middle" fill="#ecf0f1">64 spatial positions</text>
+    <text x="150" y="390" font-size="10" text-anchor="middle" fill="#ecf0f1">512-dim features</text>
+  </g>
+  
+  <!-- Reshape/Flatten -->
+  <g id="reshape">
+    <rect x="320" y="100" width="140" height="60" rx="5" fill="#95a5a6" stroke="#7f8c8d" stroke-width="2"/>
+    <text x="390" y="125" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">Flatten Spatial</text>
+    <text x="390" y="145" font-size="10" text-anchor="middle" fill="#ecf0f1">[B, 64, 512]</text>
+    
+    <rect x="320" y="340" width="140" height="60" rx="5" fill="#95a5a6" stroke="#7f8c8d" stroke-width="2"/>
+    <text x="390" y="365" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">Flatten Spatial</text>
+    <text x="390" y="385" font-size="10" text-anchor="middle" fill="#ecf0f1">[B, 64, 512]</text>
+  </g>
+  
+  <!-- Linear Projections -->
+  <g id="projections">
+    <!-- Query Projection -->
+    <rect x="520" y="100" width="130" height="60" rx="5" fill="#9b59b6" stroke="#8e44ad" stroke-width="2"/>
+    <text x="585" y="122" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">Query Proj</text>
+    <text x="585" y="138" font-size="10" text-anchor="middle" fill="#ecf0f1">Linear(512→512)</text>
+    <text x="585" y="152" font-size="9" text-anchor="middle" fill="#ecf0f1">Q = W_q × IR</text>
+    
+    <!-- Key Projection -->
+    <rect x="520" y="280" width="130" height="60" rx="5" fill="#9b59b6" stroke="#8e44ad" stroke-width="2"/>
+    <text x="585" y="302" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">Key Proj</text>
+    <text x="585" y="318" font-size="10" text-anchor="middle" fill="#ecf0f1">Linear(512→512)</text>
+    <text x="585" y="332" font-size="9" text-anchor="middle" fill="#ecf0f1">K = W_k × Ref</text>
+    
+    <!-- Value Projection -->
+    <rect x="520" y="360" width="130" height="60" rx="5" fill="#9b59b6" stroke="#8e44ad" stroke-width="2"/>
+    <text x="585" y="382" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">Value Proj</text>
+    <text x="585" y="398" font-size="10" text-anchor="middle" fill="#ecf0f1">Linear(512→512)</text>
+    <text x="585" y="412" font-size="9" text-anchor="middle" fill="#ecf0f1">V = W_v × Ref</text>
+  </g>
+  
+  <!-- Multi-Head Reshape -->
+  <g id="multihead">
+    <rect x="710" y="100" width="150" height="80" rx="5" fill="#e67e22" stroke="#d35400" stroke-width="2"/>
+    <text x="785" y="125" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">Reshape to</text>
+    <text x="785" y="142" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">8 Heads</text>
+    <text x="785" y="160" font-size="10" text-anchor="middle" fill="#ecf0f1">[B, 8, 64, 64]</text>
+    <text x="785" y="173" font-size="9" text-anchor="middle" fill="#ecf0f1">64-dim per head</text>
+    
+    <rect x="710" y="280" width="150" height="60" rx="5" fill="#e67e22" stroke="#d35400" stroke-width="2"/>
+    <text x="785" y="302" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">8 Heads</text>
+    <text x="785" y="320" font-size="10" text-anchor="middle" fill="#ecf0f1">[B, 8, 64, 64]</text>
+    
+    <rect x="710" y="360" width="150" height="60" rx="5" fill="#e67e22" stroke="#d35400" stroke-width="2"/>
+    <text x="785" y="382" font-size="11" font-weight="bold" text-anchor="middle" fill="#fff">8 Heads</text>
+    <text x="785" y="400" font-size="10" text-anchor="middle" fill="#ecf0f1">[B, 8, 64, 64]</text>
+  </g>
+  
+  <!-- Attention Computation -->
+  <g id="attention-compute">
+    <rect x="920" y="200" width="220" height="180" rx="8" fill="#1abc9c" stroke="#16a085" stroke-width="3"/>
+    <text x="1030" y="230" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Attention Computation</text>
+    
+    <!-- Step 1: Scores -->
+    <text x="940" y="255" font-size="11" font-weight="bold" fill="#fff">1. Compute Scores:</text>
+    <text x="950" y="272" font-size="10" fill="#ecf0f1">scores = Q @ K^T / √64</text>
+    <text x="950" y="287" font-size="9" fill="#ecf0f1">[B, 8, 64, 64]</text>
+    
+    <!-- Step 2: Softmax -->
+    <text x="940" y="310" font-size="11" font-weight="bold" fill="#fff">2. Softmax:</text>
+    <text x="950" y="327" font-size="10" fill="#ecf0f1">attn_weights = softmax(scores)</text>
+    <text x="950" y="342" font-size="9" fill="#ecf0f1">Each query attends to all keys</text>
+    
+    <!-- Step 3: Apply to Values -->
+    <text x="940" y="363" font-size="11" font-weight="bold" fill="#fff">3. Apply to Values:</text>
+    <text x="950" y="380" font-size="10" fill="#ecf0f1">output = attn_weights @ V</text>
+  </g>
+  
+  <!-- Output Projection -->
+  <g id="output-proj">
+    <rect x="920" y="420" width="220" height="70" rx="5" fill="#27ae60" stroke="#229954" stroke-width="2"/>
+    <text x="1030" y="445" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff">Concat Heads & Project</text>
+    <text x="1030" y="463" font-size="10" text-anchor="middle" fill="#ecf0f1">Reshape: [B, 64, 512]</text>
+    <text x="1030" y="478" font-size="10" text-anchor="middle" fill="#ecf0f1">Out Proj: Linear(512→512)</text>
+  </g>
+  
+  <!-- Final Output -->
+  <g id="final-output">
+    <rect x="920" y="530" width="220" height="90" rx="8" fill="#2ecc71" stroke="#27ae60" stroke-width="3"/>
+    <text x="1030" y="560" font-size="14" font-weight="bold" text-anchor="middle" fill="#fff">Combined Features</text>
+    <text x="1030" y="580" font-size="11" text-anchor="middle" fill="#ecf0f1">IR structure +</text>
+    <text x="1030" y="598" font-size="11" text-anchor="middle" fill="#ecf0f1">Reference color info</text>
+    <text x="1030" y="615" font-size="10" text-anchor="middle" fill="#fff">[B, 512, 8, 8]</text>
+  </g>
+  
+  <!-- Arrows -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#34495e"/>
+    </marker>
+  </defs>
+  
+  <!-- Flow arrows -->
+  <line x1="250" y1="130" x2="315" y2="130" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="250" y1="370" x2="315" y2="370" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <line x1="460" y1="130" x2="515" y2="130" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="460" y1="310" x2="515" y2="310" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="460" y1="390" x2="515" y2="390" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <line x1="650" y1="130" x2="705" y2="140" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="650" y1="310" x2="705" y2="310" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="650" y1="390" x2="705" y2="390" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <path d="M 860 140 L 890 140 L 915 240" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 860 310 L 890 310 L 915 270" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  <path d="M 860 390 L 890 390 L 915 340" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+  
+  <line x1="1030" y1="380" x2="1030" y2="415" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="1030" y1="490" x2="1030" y2="525" stroke="#34495e" stroke-width="2" marker-end="url(#arrow)"/>
+  
+  <!-- Attention visualization -->
+  <g id="attention-viz">
+    <rect x="50" y="480" width="500" height="280" rx="8" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
+    <text x="300" y="510" font-size="13" font-weight="bold" text-anchor="middle" fill="#2c3e50">
+      Attention Mechanism Visualization
+    </text>
+    
+    <!-- Query positions -->
+    <text x="70" y="540" font-size="10" font-weight="bold" fill="#34495e">IR Query Position:</text>
+    <circle cx="90" cy="565" r="8" fill="#e74c3c"/>
+    <circle cx="115" cy="565" r="8" fill="#e74c3c"/>
+    <circle cx="140" cy="565" r="8" fill="#e74c3c"/>
+    <text x="165" y="570" font-size="9" fill="#7f8c8d">... (64 positions)</text>
+    
+    <!-- Attention weights -->
+    <text x="70" y="600" font-size="10" font-weight="bold" fill="#34495e">Attends to Reference:</text>
+    <g id="ref-positions">
+      <circle cx="90" cy="625" r="6" fill="#3498db" opacity="0.9"/>
+      <circle cx="115" cy="625" r="6" fill="#3498db" opacity="0.5"/>
+      <circle cx="140" cy="625" r="6" fill="#3498db" opacity="0.7"/>
+      <circle cx="165" cy="625" r="6" fill="#3498db" opacity="0.3"/>
+      <circle cx="190" cy="625" r="6" fill="#3498db" opacity="0.8"/>
+      <text x="210" y="630" font-size="9" fill="#7f8c8d">... with learned weights</text>
+    </g>
+    
+    <!-- Arrows showing attention -->
+    <path d="M 90 573 L 90 617" stroke="#9b59b6" stroke-width="3" marker-end="url(#arrow)" opacity="0.9"/>
+    <path d="M 115 573 L 115 617" stroke="#9b59b6" stroke-width="2" marker-end="url(#arrow)" opacity="0.5"/>
+    <path d="M 140 573 L 140 617" stroke="#9b59b6" stroke-width="2.5" marker-end="url(#arrow)" opacity="0.7"/>
+    
+    <!-- Key insight -->
+    <rect x="70" y="655" width="460" height="90" rx="5" fill="#fff3cd" stroke="#ffc107" stroke-width="2"/>
+    <text x="300" y="678" font-size="11" font-weight="bold" text-anchor="middle" fill="#856404">Key Insight:</text>
+    <text x="300" y="697" font-size="10" text-anchor="middle" fill="#856404">
+      Each IR position can attend to ANY reference position
+    </text>
+    <text x="300" y="714" font-size="10" text-anchor="middle" fill="#856404">
+      → Handles different viewpoints and fields of view
+    </text>
+    <text x="300" y="731" font-size="10" text-anchor="middle" fill="#856404">
+      → Learns to find corresponding regions automatically
+    </text>
+  </g>
+  
+  <!-- Additional notes -->
+  <g id="notes">
+    <text x="600" y="685" font-size="11" font-weight="bold" fill="#2c3e50">Why Multi-Head?</text>
+    <text x="600" y="705" font-size="10" fill="#34495e">• Different heads learn different types of correspondences</text>
+    <text x="600" y="722" font-size="10" fill="#34495e">• Head 1 might focus on texture matching</text>
+    <text x="600" y="739" font-size="10" fill="#34495e">• Head 2 might focus on semantic content</text>
+    <text x="600" y="756" font-size="10" fill="#34495e">• Provides robust, diverse feature alignment</text>
+  </g>
+</svg>
