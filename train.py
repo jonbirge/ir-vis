@@ -372,7 +372,7 @@ def visualize_samples(
     val_loader: torch.utils.data.DataLoader,
     device: torch.device,
     output_path: str,
-    num_samples: int = 4
+    num_samples: int = 5
 ) -> None:
     """
     Generate and save visualization of model predictions.
@@ -598,10 +598,6 @@ def main():
     """Main entry point with command-line argument parsing."""
     parser = argparse.ArgumentParser(
         description="Train IR-to-Color Image Translation Network"
-    )
-    parser.add_argument(
-        '--config', type=str, default=None,
-        help="Path to configuration file (not yet implemented)"
     )
     parser.add_argument(
         '--resume', type=str, default=None,

@@ -59,12 +59,18 @@ class DataConfig:
     # Whether to apply additional augmentations beyond the crop
     use_augmentation: bool = True
     
-    # Augmentation parameters
+    # Image statistics augmentation parameters
     random_horizontal_flip: bool = True
     color_jitter_brightness: float = 0.1
     color_jitter_contrast: float = 0.1
     color_jitter_saturation: float = 0.1
     color_jitter_hue: float = 0.05
+    
+    # Geometric augmentation parameters (applied before cropping)
+    random_rotation: bool = False
+    max_rotation_angle: float = 10.0  # degrees
+    random_perspective: bool = False
+    perspective_distortion: float = 0.1  # 0.0 to 0.5, higher = more distortion
     
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
@@ -141,12 +147,12 @@ class LossConfig:
     
     # Perceptual loss weight (VGG feature matching)
     # Higher values produce sharper, more detailed results but may introduce artifacts
-    perceptual_weight: float = 0.5
+    perceptual_weight: float = 0.1
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
     # Note: Reduced from 50.0 to 10.0 for numerical stability
-    style_weight: float = 10.0
+    style_weight: float = 0.1
     
     # Color histogram loss weight
     # Encourages the output to have similar color distribution to ground truth
@@ -177,14 +183,14 @@ class TrainingConfig:
     # RTX 3090 (24GB): batch_size=16 should work
     # RTX 4090 (24GB): batch_size=16-20
     # A100 (40GB): batch_size=32
-    batch_size: int = 10
+    batch_size: int = 14
     
     # Number of training epochs
-    num_epochs: int = 100
+    num_epochs: int = 64
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
-    learning_rate: float = 1e-4
+    learning_rate: float = 2e-4
     
     # Weight decay for regularization
     weight_decay: float = 1e-5
@@ -213,7 +219,7 @@ class TrainingConfig:
     visualize_every: int = 1
     
     # Number of samples to visualize
-    num_visualize_samples: int = 4
+    num_visualize_samples: int = 7
     
     # Resume from checkpoint path (None to start fresh)
     resume_checkpoint: Optional[str] = None
@@ -227,7 +233,7 @@ class TrainingConfig:
     # Mixed precision training (faster on modern GPUs)
     # Note: Disabled by default as it can cause NaN issues with VGG perceptual loss
     # Enable once training is stable: use_amp: bool = True
-    use_amp: bool = False
+    use_amp: bool = True
     
     # Device: 'cuda', 'cpu', or specific GPU like 'cuda:0'
     device: str = "cuda"

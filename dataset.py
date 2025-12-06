@@ -491,6 +491,63 @@ class IRColorPairDataset(Dataset):
             )
         else:
             self.color_jitter = None
+    
+    def _apply_geometric_augmentation(self, image: Image.Image) -> Image.Image:
+        """
+        Apply geometric augmentations (rotation and perspective) to reference image only.
+        
+        These are applied only to the reference image to simulate it being
+        captured from a different perspective/viewpoint than the IR input.
+        This forces the network to learn robust feature matching across
+        different viewpoints.
+        
+        Args:
+            image: PIL Image (reference image)
+            
+        Returns:
+            Augmented PIL Image
+        """
+        # Random rotation
+        if self.config.random_rotation and random.random() < 0.5:
+            angle = random.uniform(
+                -self.config.max_rotation_angle, 
+                self.config.max_rotation_angle
+            )
+            image = TF.rotate(image, angle, fill=0)
+        
+        # Random perspective warping
+        if self.config.random_perspective and random.random() < 0.5:
+            # Get image dimensions
+            width, height = image.size
+            
+            # Generate random perspective distortion
+            # startpoints and endpoints define the transformation
+            distortion = self.config.perspective_distortion
+            
+            # Calculate random corner displacements
+            # Each corner can move by up to distortion * dimension
+            max_dx = int(width * distortion)
+            max_dy = int(height * distortion)
+            
+            # Original corners
+            startpoints = [
+                (0, 0),
+                (width, 0),
+                (width, height),
+                (0, height)
+            ]
+            
+            # Randomly displaced corners
+            endpoints = [
+                (random.randint(0, max_dx), random.randint(0, max_dy)),
+                (width - random.randint(0, max_dx), random.randint(0, max_dy)),
+                (width - random.randint(0, max_dx), height - random.randint(0, max_dy)),
+                (random.randint(0, max_dx), height - random.randint(0, max_dy))
+            ]
+            
+            image = TF.perspective(image, startpoints, endpoints, fill=0)
+        
+        return image
             
     def _get_random_crop_params(
         self, 
@@ -624,6 +681,12 @@ class IRColorPairDataset(Dataset):
         # Resize everything to target dimensions
         # Reference: full image resized to ref_image_size
         ref_image = TF.resize(image, self.config.ref_image_size)
+        
+        # Apply geometric augmentation ONLY to reference image (after resizing)
+        # This simulates the reference being captured from a different perspective
+        # than the IR input, forcing the network to learn robust feature matching
+        if self.is_training and self.config.use_augmentation:
+            ref_image = self._apply_geometric_augmentation(ref_image)
         
         # IR: grayscale crop resized to ir_image_size
         ir_image = TF.resize(ir_image, self.config.ir_image_size)
