@@ -88,42 +88,33 @@ class ModelConfig:
     3. Feature Matching Module: Attention-based alignment of reference features to content
     4. Decoder: Generates the colorized output from combined features
     
-    We use VGG-19 pretrained features for perceptual loss computation, which helps
-    the network learn perceptually meaningful colorizations rather than just
-    minimizing pixel-wise error.
+    For better small object color replication, attention is applied at H/8 resolution
+    (32x32 for 256x256 input) instead of H/32 (8x8), preserving fine spatial details.
     """
     
-    # Backbone for encoders: 'resnet18', 'resnet34', 'resnet50', 'vgg16', 'vgg19'
-    # ResNet variants are faster; VGG variants may capture texture better
+    # Backbone for encoders: 'resnet18', 'resnet34', 'resnet50'
     encoder_backbone: str = "resnet34"
     
     # Whether to use pretrained ImageNet weights for encoder initialization
-    # Strongly recommended - provides much better starting features
     pretrained_encoder: bool = True
     
-    # Number of channels in the bottleneck (after encoding, before decoding)
-    bottleneck_channels: int = 512
+    # Which encoder layer to extract features from for attention
+    # 'layer2': H/8 (32x32 for 256px input) - better for small objects, more memory
+    # 'layer3': H/16 (16x16) - balanced
+    # 'layer4': H/32 (8x8) - coarse, less memory (original)
+    attention_layer: str = "layer2"
     
     # Number of attention heads in the feature matching module
-    # More heads can capture more diverse correspondences but increase memory
-    num_attention_heads: int = 8
+    # Increased from 8 to 16 to capture more diverse spatial correspondences
+    num_attention_heads: int = 16
     
-    # Dropout rate in attention layers (helps prevent overfitting)
+    # Dropout rate in attention layers
     attention_dropout: float = 0.1
     
     # Decoder configuration
-    # Number of upsampling blocks in decoder
     decoder_blocks: int = 4
-    
-    # Whether to use skip connections from encoder to decoder (U-Net style)
-    # Helps preserve fine details from the IR image
     use_skip_connections: bool = True
-    
-    # Instance normalization vs batch normalization in decoder
-    # Instance norm often works better for style transfer tasks
     use_instance_norm: bool = True
-    
-    # Output channels (3 for RGB)
     output_channels: int = 3
 
 
@@ -183,7 +174,7 @@ class TrainingConfig:
     # RTX 3090 (24GB): batch_size=16 should work
     # RTX 4090 (24GB): batch_size=16-20
     # A100 (40GB): batch_size=32
-    batch_size: int = 14
+    batch_size: int = 10
     
     # Number of training epochs
     num_epochs: int = 64

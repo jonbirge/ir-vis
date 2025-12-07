@@ -35,11 +35,8 @@ class ResNetEncoder(nn.Module):
     Encoder based on ResNet architecture.
     
     Uses pretrained ResNet features, extracting intermediate layer outputs
-    for skip connections (U-Net style). The final layer output provides
-    the bottleneck features for cross-attention.
-    
-    We remove the final FC and avgpool layers since we need spatial features,
-    not classification logits.
+    for skip connections (U-Net style). Features can be extracted at different
+    layers (layer2, layer3, or layer4) for attention matching.
     """
     
     def __init__(
@@ -86,17 +83,23 @@ class ResNetEncoder(nn.Module):
         self.layer3 = resnet.layer3
         self.layer4 = resnet.layer4
         
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+    def forward(
+        self, 
+        x: torch.Tensor, 
+        return_layer: str = "layer4"
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """
         Forward pass through the encoder.
         
         Args:
             x: Input tensor [B, 3, H, W]
+            return_layer: Which layer to return as main features
+                         ('layer2', 'layer3', or 'layer4')
             
         Returns:
             Tuple of:
-            - Final features [B, C, H/32, W/32]
-            - List of intermediate features for skip connections
+            - Features from specified layer
+            - List of intermediate features for skip connections (up to return_layer)
         """
         # Track features at each scale for skip connections
         skip_features = []
@@ -114,13 +117,16 @@ class ResNetEncoder(nn.Module):
         
         x = self.layer2(x)  # H/8
         skip_features.append(x)
+        if return_layer == "layer2":
+            return x, skip_features
         
         x = self.layer3(x)  # H/16
         skip_features.append(x)
+        if return_layer == "layer3":
+            return x, skip_features
         
         x = self.layer4(x)  # H/32
         skip_features.append(x)
-        
         return x, skip_features
 
 
@@ -437,75 +443,82 @@ class Decoder(nn.Module):
         skip_channels: List[int],
         output_channels: int = 3,
         use_skip_connections: bool = True,
-        use_instance_norm: bool = True
+        use_instance_norm: bool = True,
+        attention_layer: str = "layer4"
     ):
         """
         Initialize the decoder.
         
         Args:
             bottleneck_channels: Number of channels in bottleneck features
-            skip_channels: List of channel counts for skip connections
-                          (from deepest to shallowest)
+            skip_channels: List of channel counts for skip connections [conv1, layer1, layer2, layer3, layer4]
             output_channels: Number of output channels (3 for RGB)
             use_skip_connections: Whether to use skip connections
             use_instance_norm: Use instance norm instead of batch norm
+            attention_layer: Which layer attention was applied at ('layer2', 'layer3', or 'layer4')
         """
         super().__init__()
         
         self.use_skip_connections = use_skip_connections
+        self.attention_layer = attention_layer
         
-        # Decoder blocks with progressively fewer channels
-        # Need 5 upsampling stages to go from H/32 back to H
-        # Channel progression: 512 -> 256 -> 128 -> 64 -> 64 -> 32
-        channel_sequence = [
-            bottleneck_channels,           # 512 (at H/32)
-            bottleneck_channels // 2,      # 256 (at H/16)
-            bottleneck_channels // 4,      # 128 (at H/8)
-            bottleneck_channels // 8,      # 64  (at H/4)
-            64,                            # 64  (at H/2)
-            32                             # 32  (at H)
-        ]
+        # Determine starting resolution based on attention layer
+        # layer2: H/8, layer3: H/16, layer4: H/32
+        layer_downsample = {'layer2': 8, 'layer3': 16, 'layer4': 32}
+        start_downsample = layer_downsample[attention_layer]
+        
+        # Calculate number of upsampling stages needed
+        # layer2 (H/8) needs 3 stages: H/8 -> H/4 -> H/2 -> H
+        # layer3 (H/16) needs 4 stages: H/16 -> H/8 -> H/4 -> H/2 -> H
+        # layer4 (H/32) needs 5 stages: H/32 -> H/16 -> H/8 -> H/4 -> H/2 -> H
+        import math
+        num_stages = int(math.log2(start_downsample))
+        
+        # Channel progression
+        channel_sequence = [bottleneck_channels]
+        for i in range(num_stages):
+            next_ch = max(32, bottleneck_channels // (2 ** (i + 1)))
+            channel_sequence.append(next_ch)
         
         self.blocks = nn.ModuleList()
         
-        # skip_channels from encoder: [64, 64, 128, 256, 512] for resnet34
-        # These correspond to: [H/2, H/4, H/8, H/16, H/32]
-        # Reversed for decoder: [H/32, H/16, H/8, H/4, H/2]
-        
+        # Build decoder blocks
         for i in range(len(channel_sequence) - 1):
             in_ch = channel_sequence[i]
             out_ch = channel_sequence[i + 1]
             
-            # Determine skip connection channels for this stage
-            # Stage 0: H/32 -> H/16, skip from layer3 (H/16)
-            # Stage 1: H/16 -> H/8, skip from layer2 (H/8)
-            # Stage 2: H/8 -> H/4, skip from layer1 (H/4)
-            # Stage 3: H/4 -> H/2, skip from conv1 (H/2)
-            # Stage 4: H/2 -> H, no skip (or could add input image)
-            
-            if use_skip_connections and i < len(skip_channels) - 1:
-                # Map decoder stage to encoder skip index
-                # skip_channels = [conv1, layer1, layer2, layer3, layer4]
-                # indices:         [0,     1,      2,      3,      4]
-                # We want: stage 0 -> skip 3, stage 1 -> skip 2, etc.
-                skip_idx = len(skip_channels) - 2 - i
-                if skip_idx >= 0:
+            # Determine skip connection for this stage
+            skip_ch = 0
+            if use_skip_connections:
+                # Map decoder stage to encoder layer
+                # For layer2 attention (starting at H/8):
+                #   stage 0: H/8->H/4, use layer1 (H/4)
+                #   stage 1: H/4->H/2, use conv1 (H/2)
+                #   stage 2: H/2->H, no skip
+                # For layer4 attention (starting at H/32):
+                #   stage 0: H/32->H/16, use layer3 (H/16)
+                #   stage 1: H/16->H/8, use layer2 (H/8)
+                #   ... etc
+                
+                # Encoder layer index where we started
+                layer_start_idx = {'layer2': 2, 'layer3': 3, 'layer4': 4}[attention_layer]
+                
+                # Skip index for this decoder stage
+                skip_idx = layer_start_idx - 1 - i
+                
+                if 0 <= skip_idx < len(skip_channels):
                     skip_ch = skip_channels[skip_idx]
-                else:
-                    skip_ch = 0
-            else:
-                skip_ch = 0
             
             self.blocks.append(
                 DecoderBlock(in_ch, skip_ch, out_ch, use_instance_norm)
             )
         
-        # Final output convolution (no upsampling, just channel reduction)
+        # Final output convolution
         self.output_conv = nn.Sequential(
             nn.Conv2d(channel_sequence[-1], output_channels, 3, padding=1),
             nn.Tanh()  # Output in [-1, 1] range
         )
-        
+    
     def forward(
         self, 
         x: torch.Tensor, 
@@ -515,26 +528,24 @@ class Decoder(nn.Module):
         Generate colorized output from combined features.
         
         Args:
-            x: Bottleneck features [B, C, H/32, W/32]
+            x: Bottleneck features [B, C, H_start, W_start]
             skip_features: List of skip connection features from encoder
-                          Order: [conv1 (H/2), layer1 (H/4), layer2 (H/8), 
-                                  layer3 (H/16), layer4 (H/32)]
-            
+                          Order: [conv1 (H/2), layer1 (H/4), layer2 (H/8), ...]
+                          
         Returns:
-            Colorized output [B, 3, H, W]
+            Colorized image [B, 3, H, W]
         """
+        # Apply decoder blocks with skip connections
         for i, block in enumerate(self.blocks):
             skip = None
             if self.use_skip_connections and skip_features is not None:
-                # Map decoder stage to skip feature
-                # stage 0 (H/32->H/16): use skip from layer3 (index 3)
-                # stage 1 (H/16->H/8): use skip from layer2 (index 2)
-                # stage 2 (H/8->H/4): use skip from layer1 (index 1)
-                # stage 3 (H/4->H/2): use skip from conv1 (index 0)
-                # stage 4 (H/2->H): no skip
-                skip_idx = len(skip_features) - 2 - i
-                if skip_idx >= 0:
+                # Determine which skip feature to use
+                layer_start_idx = {'layer2': 2, 'layer3': 3, 'layer4': 4}[self.attention_layer]
+                skip_idx = layer_start_idx - 1 - i
+                
+                if 0 <= skip_idx < len(skip_features):
                     skip = skip_features[skip_idx]
+            
             x = block(x, skip)
         
         # Final output
@@ -584,8 +595,10 @@ class IRColorNet(nn.Module):
             pretrained=config.pretrained_encoder
         )
         
-        # Get bottleneck channel count from encoder
-        bottleneck_channels = self.content_encoder.feature_channels[-1]
+        # Determine bottleneck channels based on attention layer
+        layer_map = {'layer2': 2, 'layer3': 3, 'layer4': 4}
+        layer_idx = layer_map.get(config.attention_layer, 4)
+        bottleneck_channels = self.content_encoder.feature_channels[layer_idx]
         
         # Feature matching module
         self.feature_matching = FeatureMatchingModule(
@@ -600,7 +613,8 @@ class IRColorNet(nn.Module):
             skip_channels=self.content_encoder.feature_channels,
             output_channels=config.output_channels,
             use_skip_connections=config.use_skip_connections,
-            use_instance_norm=config.use_instance_norm
+            use_instance_norm=config.use_instance_norm,
+            attention_layer=config.attention_layer  # NEW
         )
         
         # Initialize weights for non-pretrained layers
@@ -634,27 +648,29 @@ class IRColorNet(nn.Module):
         Forward pass through the complete network.
         
         Args:
-            ir_image: IR input image [B, 3, H, W] (grayscale repeated to 3 channels)
+            ir_image: IR input image [B, 3, H, W]
             ref_image: Color reference image [B, 3, H', W']
-            return_attention: Whether to return attention maps (for visualization)
+            return_attention: Whether to return attention maps
             
         Returns:
-            Dictionary containing:
-            - 'output': Colorized image [B, 3, H, W]
-            - 'attention': Attention maps (if return_attention)
-            - 'content_features': Content encoder bottleneck features
-            - 'ref_features': Reference encoder bottleneck features
+            Dictionary with 'output', 'content_features', 'ref_features'
         """
-        # Encode IR image
-        content_features, content_skips = self.content_encoder(ir_image)
+        # Encode IR image at specified layer
+        content_features, content_skips = self.content_encoder(
+            ir_image, 
+            return_layer=self.config.attention_layer
+        )
         
-        # Encode reference image
-        ref_features, _ = self.reference_encoder(ref_image)
+        # Encode reference image at same layer
+        ref_features, _ = self.reference_encoder(
+            ref_image,
+            return_layer=self.config.attention_layer
+        )
         
-        # Match features (transfer color info from reference to content)
+        # Match features
         combined_features = self.feature_matching(content_features, ref_features)
         
-        # Decode to generate colorized output
+        # Decode
         output = self.decoder(combined_features, content_skips)
         
         results = {

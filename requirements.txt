@@ -2,7 +2,7 @@
 # Install with: pip install -r requirements.txt
 
 # Use the appropriate PyTorch index for CUDA 12.4
---index-url https://download.pytorch.org/whl/cu124
+--extra-index-url https://download.pytorch.org/whl/cu124
 
 # PyTorch
 torch>=2.0.0
