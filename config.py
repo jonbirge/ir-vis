@@ -51,7 +51,7 @@ class DataConfig:
     # Crop ratio range for simulating different FOVs between IR and visible
     # e.g., (0.4, 0.7) means the IR crop will be 40-70% of the original image
     # This creates perspective/FOV mismatch that the network must learn to handle
-    crop_ratio_range: Tuple[float, float] = (0.4, 0.7)
+    crop_ratio_range: Tuple[float, float] = (0.45, 0.75)
     
     # Number of data loading workers (adjust based on your CPU cores)
     num_workers: int = 4
@@ -61,10 +61,10 @@ class DataConfig:
     
     # Image statistics augmentation parameters
     random_horizontal_flip: bool = True
-    color_jitter_brightness: float = 0.1
-    color_jitter_contrast: float = 0.1
-    color_jitter_saturation: float = 0.1
-    color_jitter_hue: float = 0.05
+    color_jitter_brightness: float = 0.05
+    color_jitter_contrast: float = 0.05
+    color_jitter_saturation: float = 0.05
+    color_jitter_hue: float = 0.025
     
     # Geometric augmentation parameters (applied before cropping)
     random_rotation: bool = False
@@ -102,7 +102,7 @@ class ModelConfig:
     # 'layer2': H/8 (32x32 for 256px input) - better for small objects, more memory
     # 'layer3': H/16 (16x16) - balanced
     # 'layer4': H/32 (8x8) - coarse, less memory (original)
-    attention_layer: str = "layer2"
+    attention_layer: str = "layer3"
     
     # Number of attention heads in the feature matching module
     # Increased from 8 to 16 to capture more diverse spatial correspondences
@@ -134,20 +134,20 @@ class LossConfig:
     """
     
     # L1 (pixel-wise) reconstruction loss weight
-    l1_weight: float = 1.0
+    l1_weight: float = 10.0
     
     # Perceptual loss weight (VGG feature matching)
     # Higher values produce sharper, more detailed results but may introduce artifacts
-    perceptual_weight: float = 0.1
+    perceptual_weight: float = 2.5
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
     # Note: Reduced from 50.0 to 10.0 for numerical stability
-    style_weight: float = 0.1
+    style_weight: float = 10.0
     
     # Color histogram loss weight
     # Encourages the output to have similar color distribution to ground truth
-    histogram_weight: float = 0.1
+    histogram_weight: float = 10.0
     
     # VGG layers to use for perceptual loss
     # Earlier layers capture low-level features; later layers capture semantics
@@ -177,7 +177,7 @@ class TrainingConfig:
     batch_size: int = 10
     
     # Number of training epochs
-    num_epochs: int = 64
+    num_epochs: int = 75
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
