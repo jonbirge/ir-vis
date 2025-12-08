@@ -27,11 +27,14 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 import argparse
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.cuda.amp import GradScaler, autocast
+import torch # type: ignore
+import torch.nn as nn # type: ignore
+import torch.optim as optim # type: ignore
+from torch.amp import GradScaler, autocast # type: ignore
 from tqdm import tqdm # type: ignore
+
+import random
+import numpy as np # type: ignore
 
 from config import Config, get_config
 from dataset import get_dataloaders, denormalize
@@ -200,7 +203,7 @@ def train_epoch(
         
         # Forward pass with optional mixed precision
         if scaler is not None:
-            with autocast():
+            with autocast('cuda'):
                 # Forward pass
                 outputs = model(ir_image, ref_image)
                 pred_image = outputs['output']
@@ -372,37 +375,87 @@ def visualize_samples(
     val_loader: torch.utils.data.DataLoader,
     device: torch.device,
     output_path: str,
-    num_samples: int = 5
+    num_samples: int = 5,
+    epoch: int = 0
 ) -> None:
     """
-    Generate and save visualization of model predictions.
-    
+    Generate and save visualization of model predictions using deterministic
+    augmentation/cropping for validation visualization.
+
     Args:
         model: The neural network model
         val_loader: Validation data loader
         device: Device to run on
         output_path: Path to save the visualization
         num_samples: Number of samples to visualize
+        epoch: Current epoch (used to derive deterministic seeds)
     """
     model.eval()
-    
-    # Get a batch
-    batch = next(iter(val_loader))
-    
-    ir_image = batch['ir_image'][:num_samples].to(device)
-    ref_image = batch['ref_image'][:num_samples].to(device)
-    target_image = batch['target_image'][:num_samples].to(device)
-    
+
+    dataset = val_loader.dataset
+    max_index = len(dataset)
+    num_samples = min(num_samples, max_index)
+
+    ir_list = []
+    ref_list = []
+    target_list = []
+
+    # Save global RNG states to restore after deterministic sampling
+    py_state = random.getstate()
+    np_state = np.random.get_state()
+    torch_state = torch.get_rng_state()
+    cuda_state = None
+    if torch.cuda.is_available():
+        try:
+            cuda_state = torch.cuda.get_rng_state_all()
+        except Exception:
+            cuda_state = None
+
+    try:
+        for i in range(num_samples):
+            # Derive deterministic seed from epoch and sample index
+            seed = (epoch + 1) * 100000 + i
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
+            # Fetch deterministic sample directly from dataset
+            sample = dataset[i]
+            ir = sample['ir_image']  # Tensor [3, H, W]
+            ref = sample['ref_image']
+            target = sample['target_image']
+
+            ir_list.append(ir)
+            ref_list.append(ref)
+            target_list.append(target)
+    finally:
+        # Restore RNG states
+        random.setstate(py_state)
+        np.random.set_state(np_state)
+        torch.set_rng_state(torch_state)
+        if cuda_state is not None and torch.cuda.is_available():
+            try:
+                torch.cuda.set_rng_state_all(cuda_state)
+            except Exception:
+                pass
+
+    # Stack into batched tensors and move to device
+    ir_batch = torch.stack(ir_list, dim=0).to(device)
+    ref_batch = torch.stack(ref_list, dim=0).to(device)
+    target_batch = torch.stack(target_list, dim=0).to(device)
+
     # Forward pass
-    outputs = model(ir_image, ref_image)
-    pred_image = outputs['output']
-    
-    # Save visualization
+    outputs = model(ir_batch, ref_batch)
+    pred_batch = outputs['output']
+
+    # Save visualization (reuse existing utility)
     save_batch_visualization(
-        ir_image.cpu(),
-        ref_image.cpu(),
-        pred_image.cpu(),
-        target_image.cpu(),
+        ir_batch.cpu(),
+        ref_batch.cpu(),
+        pred_batch.cpu(),
+        target_batch.cpu(),
         output_path,
         max_samples=num_samples
     )
@@ -471,7 +524,7 @@ def train(config: Config) -> None:
     print(f"  Scheduler: {config.training.lr_scheduler}")
     
     # Setup mixed precision
-    scaler = GradScaler() if config.training.use_amp and device.type == 'cuda' else None
+    scaler = GradScaler('cuda') if config.training.use_amp and device.type == 'cuda' else None
     if scaler:
         print("  Mixed precision: Enabled")
     
@@ -574,7 +627,8 @@ def train(config: Config) -> None:
             )
             visualize_samples(
                 model, val_loader, device, viz_path,
-                num_samples=config.training.num_visualize_samples
+                num_samples=config.training.num_visualize_samples,
+                epoch=epoch
             )
             print(f"  Saved visualization to {viz_path}")
         
