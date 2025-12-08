@@ -134,11 +134,11 @@ class LossConfig:
     """
     
     # L1 (pixel-wise) reconstruction loss weight
-    l1_weight: float = 10.0
+    l1_weight: float = 2.5
     
     # Perceptual loss weight (VGG feature matching)
     # Higher values produce sharper, more detailed results but may introduce artifacts
-    perceptual_weight: float = 2.5
+    perceptual_weight: float = 1.0
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
@@ -147,7 +147,7 @@ class LossConfig:
     
     # Color histogram loss weight
     # Encourages the output to have similar color distribution to ground truth
-    histogram_weight: float = 10.0
+    histogram_weight: float = 1.0
     
     # VGG layers to use for perceptual loss
     # Earlier layers capture low-level features; later layers capture semantics
@@ -177,7 +177,7 @@ class TrainingConfig:
     batch_size: int = 10
     
     # Number of training epochs
-    num_epochs: int = 75
+    num_epochs: int = 50
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
@@ -194,7 +194,7 @@ class TrainingConfig:
     lr_milestones: List[int] = field(default_factory=lambda: [30, 60, 80])
     
     # For cosine scheduler: minimum learning rate
-    lr_min: float = 1e-6
+    lr_min: float = 2e-6
     
     # Gradient clipping (max norm) - helps stabilize training
     # Reduced from 1.0 to 0.5 for better stability during early training
