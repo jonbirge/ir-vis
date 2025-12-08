@@ -249,10 +249,18 @@ def draw_fig3_tikz():
     line/.style={->, thick, color=black!70}
 ]
 
+% Contextual encoder features
+\node[block, fill=blue!10] (ir_feat) at (-1,2) {\textbf{IR Encoder}\\ \scriptsize Spatial Features};
+\node[block, fill=pnn_orange!10] (ref_feat) at (6,2) {\textbf{Reference Encoder}\\ \scriptsize Color Features};
+
 % Inputs
 \node[block, fill=blue!5] (q) at (0,0) {\textbf{Content (Q)}\\ \scriptsize From IR};
 \node[block, fill=pnn_orange!20] (k) at (3.5,0) {\textbf{Ref (K)}\\ \scriptsize From Ref};
 \node[block, fill=pnn_orange!20] (v) at (7,0) {\textbf{Ref (V)}\\ \scriptsize From Ref};
+
+\draw[line] (ir_feat) -- (q.north);
+\draw[line] (ref_feat.west) |- (k.north);
+\draw[line] (ref_feat.east) |- (v.north);
 
 % Linear Projections
 \node[block, below=0.8cm of q] (lq) {Linear};
@@ -571,10 +579,7 @@ def cleanup_latex_cruft(basenames=None, exts=None):
 		print("🧹 No temporary files found.")
 
 if __name__ == "__main__":
-    draw_fig1()
-    draw_fig2()
     draw_fig3_tikz()
     draw_fig4_pdf()
     draw_fig5_resnet_encoder()
-    draw_fig6_decoder()
     cleanup_latex_cruft()
