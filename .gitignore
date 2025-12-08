@@ -6,4 +6,7 @@ venv/
 .vscode/
 *.png
 *.pdf
+*.tex
+*.aux
+*.log
 *~
