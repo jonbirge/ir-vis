@@ -1,7 +1,10 @@
 import os
 import sys
 import subprocess
-import torch
+try:
+    import torch # type: ignore
+except Exception:
+    torch = None
 
 # ==========================================
 # HELPER: COMPILE LATEX
@@ -13,7 +16,23 @@ def compile_latex(filename):
     cmd = ["pdflatex", "-interaction=nonstopmode", filename]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"✅ Generated {filename.replace('.tex', '.pdf')}")
+    # Clean up common LaTeX auxiliary files, leave only the PDF
+    base = os.path.splitext(filename)[0]
+    aux_exts = ['.aux', '.log', '.out', '.toc', '.synctex.gz', '.fls', '.fdb_latexmk']
+    for ext in aux_exts:
+        p = base + ext
+        try:
+            os.remove(p)
+        except FileNotFoundError:
+            pass
+
+    # remove the .tex source if user wants only PDFs
+    try:
+        os.remove(filename)
+    except FileNotFoundError:
+        pass
+
+    print(f"✅ Generated {base + '.pdf'}")
 
 # ==========================================
 # FIG 1: SYSTEM OVERVIEW (NOW 3D / PNN)
@@ -23,14 +42,12 @@ def gen_fig1_pnn():
     if not os.path.exists("pycore"):
         print("❌ PlotNeuralNet not found. Run 'python setup_pnn.py' first.")
         return
+    # Build the architecture in-process and write the .tex file directly
+    from pycore.tikzeng import to_head, to_cor, to_begin, to_input, to_Conv, to_connection, to_end, to_generate
 
-    script = r"""
-import sys
-sys.path.append('.')
-from pycore.tikzeng import *
-from pycore.blocks import *
+    def block_2d(name, bottom, top, xshift=0, yshift=0, width=5, height=10, depth=10, caption="", opacity=1.0, color="white"):
+        return [to_Conv(name, height, depth, offset=f"({xshift},{yshift},0)", to=f"({bottom}-east)", width=width, caption=caption)]
 
-def main():
     arch = [
         to_head('.'),
         to_cor(),
@@ -38,53 +55,33 @@ def main():
 
         # --- 1. IR Stream (Content) ---
         to_input('ir_img', label='IR Input'),
-        
-        # Content Encoder (Represented as a simplified monolithic stack)
         *block_2d('enc_c1', bottom='ir_img', top='ir_img', width=2, height=20, depth=20, caption='Content Enc', color='white'),
         *block_2d('enc_c2', bottom='enc_c1', top='enc_c1', xshift=2, width=3, height=15, depth=15),
         *block_2d('enc_c3', bottom='enc_c2', top='enc_c2', xshift=2, width=4, height=10, depth=10),
 
         # --- 2. Reference Stream (Color) ---
-        # Shifted down in Y to separate the streams
         to_input('ref_img', label='Reference', xshift=0, yshift=-16),
-        
-        # Ref Encoder (Orange)
         *block_2d('enc_r1', bottom='ref_img', top='ref_img', width=2, height=20, depth=20, color='orange', caption='Ref Enc'),
         *block_2d('enc_r2', bottom='enc_r1', top='enc_r1', xshift=2, width=3, height=15, depth=15, color='orange'),
         *block_2d('enc_r3', bottom='enc_r2', top='enc_r2', xshift=2, width=4, height=10, depth=10, color='orange'),
 
         # --- 3. Feature Matcher (The Bridge) ---
-        # Placed centrally
         *block_2d('matcher', bottom='enc_c3', top='enc_r3', xshift=6, yshift=-2, width=5, height=30, depth=8, color='purple', opacity=0.7, caption='Cross-Attention\\nModule'),
-        
-        # Connections
         to_connection('enc_c3', 'matcher'),
         to_connection('enc_r3', 'matcher'),
 
         # --- 4. Decoder ---
-        # Growing blocks
         *block_2d('dec1', bottom='matcher', top='matcher', xshift=6, width=4, height=10, depth=10, color='green', caption='Decoder'),
         *block_2d('dec2', bottom='dec1', top='dec1', xshift=2, width=3, height=15, depth=15, color='green'),
         *block_2d('dec3', bottom='dec2', top='dec2', xshift=2, width=2, height=20, depth=20, color='green'),
-        
-        # Output
+
         to_input('out_img', label='Color Output', xshift=3),
         to_connection('dec3', 'out_img'),
 
         to_end()
     ]
-    
-    # Custom block helper
-    def block_2d(name, bottom, top, xshift=0, yshift=0, width=5, height=10, depth=10, caption="", opacity=1.0, color="white"):
-        return [to_Conv(name, height, depth, offset=f"({xshift},{yshift},0)", to=f"({bottom}-east)", width=width, caption=caption, opacity=opacity, color=color)]
 
     to_generate(arch, "fig1_system.tex")
-
-if __name__ == "__main__":
-    main()
-"""
-    with open("run_fig1.py", "w") as f: f.write(script)
-    subprocess.run([sys.executable, "run_fig1.py"])
     compile_latex("fig1_system.tex")
 
 # ==========================================
@@ -93,14 +90,21 @@ if __name__ == "__main__":
 def gen_fig2_pnn():
     print("\n--- Generating Figure 2 (Detailed Architecture - 3D PNN) ---")
     if not os.path.exists("pycore"): return
+    # Build architecture in-process and write the .tex file directly
+    from pycore.tikzeng import to_head, to_cor, to_begin, to_input, to_Conv, to_ConvRes, to_UnPool, to_connection, to_end, to_generate, to_skip
 
-    script = r"""
-import sys
-sys.path.append('.')
-from pycore.tikzeng import *
-from pycore.blocks import *
+    def block_Res(name, bottom, top, xshift=0, height=10, depth=10, width=5, caption="", color="white"):
+        return [to_ConvRes(name, height, depth, offset="(0,0,0)", to=f"({bottom}-east)", width=width, caption=caption)]
 
-def main():
+    def block_Unconv(name, bottom, top, xshift=0, height=10, depth=10, width=5, caption=""):
+        return [
+            to_UnPool(name, offset="(1,0,0)", to=f"({bottom}-east)", width=1, height=height, depth=depth, opacity=0.5),
+            to_Conv(name, height, depth, offset="(0,0,0)", to=f"({name}-east)", width=width, caption=caption)
+        ]
+
+    def block_2d(name, bottom, top, xshift=0, yshift=0, width=5, height=10, depth=10, caption="", opacity=1.0, color="white"):
+        return [to_Conv(name, height, depth, offset=f"({xshift},{yshift},0)", to=f"({bottom}-east)", width=width, caption=caption)]
+
     arch = [
         to_head('.'),
         to_cor(),
@@ -140,26 +144,8 @@ def main():
         *block_2d('out', bottom='up4', top='up4', xshift=3, width=1, height=32, depth=32, color="green", caption="RGB"),
         to_end()
     ]
-    
-    def block_Res(name, bottom, top, xshift=0, height=10, depth=10, width=5, caption="", color="white"):
-        return [to_ConvRes(name, height, depth, offset="(0,0,0)", to=f"({bottom}-east)", width=width, caption=caption, n_label="", color=color)]
-        
-    def block_Unconv(name, bottom, top, xshift=0, height=10, depth=10, width=5, caption=""):
-        return [
-            to_UnPool(name, offset="(1,0,0)", to=f"({bottom}-east)", width=1, height=height, depth=depth, opacity=0.5),
-            to_Conv(name, height, depth, offset="(0,0,0)", to=f"({name}-east)", width=width, caption=caption, n_label="")
-        ]
-        
-    def block_2d(name, bottom, top, xshift=0, yshift=0, width=5, height=10, depth=10, caption="", opacity=1.0, color="white"):
-        return [to_Conv(name, height, depth, offset=f"({xshift},{yshift},0)", to=f"({bottom}-east)", width=width, caption=caption, opacity=opacity, color=color)]
 
     to_generate(arch, "fig2_architecture.tex")
-
-if __name__ == "__main__":
-    main()
-"""
-    with open("run_fig2.py", "w") as f: f.write(script)
-    subprocess.run([sys.executable, "run_fig2.py"])
     compile_latex("fig2_architecture.tex")
 
 # ==========================================
@@ -262,7 +248,7 @@ def gen_fig3_tikz():
 def gen_fig4_svg():
     print("\n--- Generating Figure 4 (Automated SVG Trace) ---")
     try:
-        from torchview import draw_graph
+        from torchview import draw_graph # type: ignore
         from model import create_model
         from config import get_config
         
@@ -272,9 +258,9 @@ def gen_fig4_svg():
         ref = torch.randn(1, 3, 256, 256)
         
         graph = draw_graph(model, input_data=(ir, ref), expand_nested=True, depth=2, save_graph=False)
-        graph.visual_graph.format = 'svg'
+        graph.visual_graph.format = 'pdf'
         graph.visual_graph.render(filename='fig4_automated_trace', cleanup=True)
-        print("✅ Saved 'fig4_automated_trace.svg'")
+        print("✅ Saved 'fig4_automated_trace.pdf'")
     except Exception as e:
         print(f"❌ Error: {e}")
 
