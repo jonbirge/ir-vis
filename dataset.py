@@ -30,12 +30,12 @@ import zipfile
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any, List, Union
 
-import torch
-from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as T
-import torchvision.transforms.functional as TF
-from PIL import Image
-import numpy as np
+import torch # type: ignore
+from torch.utils.data import Dataset, DataLoader # type: ignore
+import torchvision.transforms as T # type: ignore
+import torchvision.transforms.functional as TF # type: ignore
+from PIL import Image # type: ignore
+import numpy as np # type: ignore
 
 from config import Config, DataConfig
 

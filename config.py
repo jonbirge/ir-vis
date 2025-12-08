@@ -61,10 +61,10 @@ class DataConfig:
     
     # Image statistics augmentation parameters
     random_horizontal_flip: bool = True
-    color_jitter_brightness: float = 0.05
-    color_jitter_contrast: float = 0.05
-    color_jitter_saturation: float = 0.05
-    color_jitter_hue: float = 0.025
+    color_jitter_brightness: float = 0.1
+    color_jitter_contrast: float = 0.1
+    color_jitter_saturation: float = 0.1
+    color_jitter_hue: float = 0.05
     
     # Geometric augmentation parameters (applied before cropping)
     random_rotation: bool = False
@@ -93,7 +93,7 @@ class ModelConfig:
     """
     
     # Backbone for encoders: 'resnet18', 'resnet34', 'resnet50'
-    encoder_backbone: str = "resnet34"
+    encoder_backbone: str = "resnet18"
     
     # Whether to use pretrained ImageNet weights for encoder initialization
     pretrained_encoder: bool = True
@@ -105,8 +105,8 @@ class ModelConfig:
     attention_layer: str = "layer4"
     
     # Number of attention heads in the feature matching module
-    # Increased from 8 to 16 to capture more diverse spatial correspondences
-    num_attention_heads: int = 16
+    # Increased to 16 to capture more diverse spatial correspondences
+    num_attention_heads: int = 8
     
     # Dropout rate in attention layers
     attention_dropout: float = 0.1
@@ -134,11 +134,11 @@ class LossConfig:
     """
     
     # L1 (pixel-wise) reconstruction loss weight
-    l1_weight: float = 2.5
+    l1_weight: float = 5.0
     
     # Perceptual loss weight (VGG feature matching)
     # Higher values produce sharper, more detailed results but may introduce artifacts
-    perceptual_weight: float = 0.0
+    perceptual_weight: float = 1.0
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
@@ -174,7 +174,7 @@ class TrainingConfig:
     # RTX 3090 (24GB): batch_size=16 should work
     # RTX 4090 (24GB): batch_size=16-20
     # A100 (40GB): batch_size=32
-    batch_size: int = 10
+    batch_size: int = 12
     
     # Number of training epochs
     num_epochs: int = 50

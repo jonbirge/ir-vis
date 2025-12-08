@@ -22,10 +22,10 @@ The total loss is a weighted combination of these components, with weights
 specified in the configuration.
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import models
+import torch # type: ignore
+import torch.nn as nn # type: ignore
+import torch.nn.functional as F # type: ignore
+from torchvision import models # type: ignore
 from typing import Dict, List, Optional, Tuple
 from collections import OrderedDict
 
