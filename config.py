@@ -102,7 +102,7 @@ class ModelConfig:
     # 'layer2': H/8 (32x32 for 256px input) - better for small objects, more memory
     # 'layer3': H/16 (16x16) - balanced
     # 'layer4': H/32 (8x8) - coarse, less memory (original)
-    attention_layer: str = "layer3"
+    attention_layer: str = "layer4"
     
     # Number of attention heads in the feature matching module
     # Increased from 8 to 16 to capture more diverse spatial correspondences
@@ -138,7 +138,7 @@ class LossConfig:
     
     # Perceptual loss weight (VGG feature matching)
     # Higher values produce sharper, more detailed results but may introduce artifacts
-    perceptual_weight: float = 1.0
+    perceptual_weight: float = 0.0
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
