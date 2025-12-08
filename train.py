@@ -379,8 +379,10 @@ def visualize_samples(
     epoch: int = 0
 ) -> None:
     """
-    Generate and save visualization of model predictions using deterministic
-    augmentation/cropping for validation visualization.
+    Generate and save visualization of model predictions.
+    
+    Uses deterministic cropping (fixed seed per sample) to ensure consistent
+    visualization across epochs for easier comparison.
 
     Args:
         model: The neural network model
@@ -388,58 +390,36 @@ def visualize_samples(
         device: Device to run on
         output_path: Path to save the visualization
         num_samples: Number of samples to visualize
-        epoch: Current epoch (used to derive deterministic seeds)
+        epoch: Current epoch (for naming only, not used for seeding)
     """
     model.eval()
 
-    dataset = val_loader.dataset
-    max_index = len(dataset)
+    # Get original dataset info
+    original_dataset = val_loader.dataset
+    max_index = len(original_dataset)
     num_samples = min(num_samples, max_index)
+
+    # Import dataset class
+    from dataset import IRColorPairDataset
+    
+    # Create a deterministic dataset with fixed crop seed
+    # This ensures the same crops are used for visualization across all epochs
+    vis_dataset = IRColorPairDataset(
+        image_source=original_dataset.image_paths[:num_samples],
+        config=original_dataset.config,
+        is_training=False,
+        fixed_crop_seed=42  # Fixed seed ensures consistent crops across epochs
+    )
 
     ir_list = []
     ref_list = []
     target_list = []
 
-    # Save global RNG states to restore after deterministic sampling
-    py_state = random.getstate()
-    np_state = np.random.get_state()
-    torch_state = torch.get_rng_state()
-    cuda_state = None
-    if torch.cuda.is_available():
-        try:
-            cuda_state = torch.cuda.get_rng_state_all()
-        except Exception:
-            cuda_state = None
-
-    try:
-        for i in range(num_samples):
-            # Derive deterministic seed from epoch and sample index
-            seed = (epoch + 1) * 100000 + i
-            random.seed(seed)
-            np.random.seed(seed)
-            torch.manual_seed(seed)
-            if torch.cuda.is_available():
-                torch.cuda.manual_seed_all(seed)
-
-            # Fetch deterministic sample directly from dataset
-            sample = dataset[i]
-            ir = sample['ir_image']  # Tensor [3, H, W]
-            ref = sample['ref_image']
-            target = sample['target_image']
-
-            ir_list.append(ir)
-            ref_list.append(ref)
-            target_list.append(target)
-    finally:
-        # Restore RNG states
-        random.setstate(py_state)
-        np.random.set_state(np_state)
-        torch.set_rng_state(torch_state)
-        if cuda_state is not None and torch.cuda.is_available():
-            try:
-                torch.cuda.set_rng_state_all(cuda_state)
-            except Exception:
-                pass
+    for i in range(num_samples):
+        sample = vis_dataset[i]
+        ir_list.append(sample['ir_image'])
+        ref_list.append(sample['ref_image'])
+        target_list.append(sample['target_image'])
 
     # Stack into batched tensors and move to device
     ir_batch = torch.stack(ir_list, dim=0).to(device)

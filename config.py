@@ -102,11 +102,11 @@ class ModelConfig:
     # 'layer2': H/8 (32x32 for 256px input) - better for small objects, more memory
     # 'layer3': H/16 (16x16) - balanced
     # 'layer4': H/32 (8x8) - coarse, less memory (original)
-    attention_layer: str = "layer4"
+    attention_layer: str = "layer3"
     
     # Number of attention heads in the feature matching module
     # Increased to 16 to capture more diverse spatial correspondences
-    num_attention_heads: int = 8
+    num_attention_heads: int = 16
     
     # Dropout rate in attention layers
     attention_dropout: float = 0.1
@@ -174,7 +174,7 @@ class TrainingConfig:
     # RTX 3090 (24GB): batch_size=16 should work
     # RTX 4090 (24GB): batch_size=16-20
     # A100 (40GB): batch_size=32
-    batch_size: int = 12
+    batch_size: int = 10 # 10-12 seems to work well with 12 GB VRAM
     
     # Number of training epochs
     num_epochs: int = 50

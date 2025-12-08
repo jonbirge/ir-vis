@@ -420,7 +420,8 @@ class IRColorPairDataset(Dataset):
         image_source: Union[str, List[Path]],
         config: DataConfig,
         is_training: bool = True,
-        max_samples: Optional[int] = None
+        max_samples: Optional[int] = None,
+        fixed_crop_seed: Optional[int] = None
     ):
         """
         Initialize the dataset.
@@ -430,9 +431,12 @@ class IRColorPairDataset(Dataset):
             config: Data configuration object
             is_training: Whether this is training (enables augmentation)
             max_samples: Optional limit on number of samples (for debugging)
+            fixed_crop_seed: If set, uses deterministic cropping based on this seed
+                           (useful for consistent visualization across epochs)
         """
         self.config = config
         self.is_training = is_training
+        self.fixed_crop_seed = fixed_crop_seed
         
         # Handle both directory path and list of paths
         if isinstance(image_source, (str, Path)):
@@ -665,12 +669,23 @@ class IRColorPairDataset(Dataset):
             image = self.color_jitter(image)
         
         # Random horizontal flip (applied consistently to all derived images)
-        do_flip = self.is_training and self.config.random_horizontal_flip and random.random() < 0.5
+        # Skip if using fixed seed for deterministic visualization
+        do_flip = self.is_training and self.config.random_horizontal_flip and random.random() < 0.5 and self.fixed_crop_seed is None
         if do_flip:
             image = TF.hflip(image)
         
         # Get crop parameters for simulated IR region
-        top, left, crop_h, crop_w = self._get_random_crop_params(img_width, img_height)
+        # Use deterministic seed if provided (for consistent visualization)
+        if self.fixed_crop_seed is not None:
+            # Save current random state
+            saved_state = random.getstate()
+            # Set deterministic seed based on fixed_crop_seed + idx
+            random.seed(self.fixed_crop_seed + idx)
+            top, left, crop_h, crop_w = self._get_random_crop_params(img_width, img_height)
+            # Restore random state
+            random.setstate(saved_state)
+        else:
+            top, left, crop_h, crop_w = self._get_random_crop_params(img_width, img_height)
         
         # Extract the crop region
         crop = TF.crop(image, top, left, crop_h, crop_w)
@@ -685,7 +700,8 @@ class IRColorPairDataset(Dataset):
         # Apply geometric augmentation ONLY to reference image (after resizing)
         # This simulates the reference being captured from a different perspective
         # than the IR input, forcing the network to learn robust feature matching
-        if self.is_training and self.config.use_augmentation:
+        # Skip if using fixed seed for deterministic visualization
+        if self.is_training and self.config.use_augmentation and self.fixed_crop_seed is None:
             ref_image = self._apply_geometric_augmentation(ref_image)
         
         # IR: grayscale crop resized to ir_image_size
