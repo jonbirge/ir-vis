@@ -67,14 +67,14 @@ class DataConfig:
     color_jitter_hue: float = 0.05
     
     # Geometric augmentation parameters (applied before cropping)
-    random_rotation: bool = False
+    random_rotation: bool = True
     max_rotation_angle: float = 10.0  # degrees
-    random_perspective: bool = False
+    random_perspective: bool = True
     perspective_distortion: float = 0.1  # 0.0 to 0.5, higher = more distortion
     
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
-    max_train_samples: Optional[int] = 16000
+    max_train_samples: Optional[int] = 32000
 
 
 @dataclass
@@ -97,6 +97,11 @@ class ModelConfig:
     
     # Whether to use pretrained ImageNet weights for encoder initialization
     pretrained_encoder: bool = True
+    
+    # Whether to freeze the content encoder (IR input) weights
+    # If True, only the reference encoder, feature matching, and decoder are trained
+    # Useful for leveraging pretrained features without fine-tuning
+    freeze_content_encoder: bool = False
     
     # Which encoder layer to extract features from for attention
     # 'layer2': H/8 (32x32 for 256px input) - better for small objects, more memory
@@ -259,8 +264,7 @@ def get_config() -> Config:
     """
     Factory function to get the default configuration.
     
-    This can be extended to support loading from YAML/JSON files
-    or command-line argument overrides.
+    TODO: can be extended to support loading from YAML/JSON files.
     
     Returns:
         Config: The complete configuration object

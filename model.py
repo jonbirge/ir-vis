@@ -21,10 +21,10 @@ The encoders share architecture but not weights, as they process
 different modalities (grayscale vs color) with different characteristics.
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import models
+import torch # type: ignore
+import torch.nn as nn # type: ignore
+import torch.nn.functional as F # type: ignore
+from torchvision import models # type: ignore
 from typing import List, Tuple, Optional, Dict
 
 from config import ModelConfig
@@ -620,6 +620,10 @@ class IRColorNet(nn.Module):
         # Initialize weights for non-pretrained layers
         self._init_weights()
         
+        # Freeze content encoder if specified
+        if self.config.freeze_content_encoder:
+            self._freeze_content_encoder()
+        
     def _init_weights(self):
         """Initialize weights for decoder and attention layers."""
         for module in [self.feature_matching, self.decoder]:
@@ -637,6 +641,21 @@ class IRColorNet(nn.Module):
                         nn.init.constant_(m.weight, 1)
                     if m.bias is not None:
                         nn.init.constant_(m.bias, 0)
+    
+    def _freeze_content_encoder(self):
+        """
+        Freeze the content (IR) encoder weights.
+        
+        This prevents the content encoder from being updated during training,
+        which can be useful for:
+        - Leveraging pretrained features without fine-tuning
+        - Reducing memory usage during training
+        - Focusing training on the reference encoder and decoder
+        """
+        for param in self.content_encoder.parameters():
+            param.requires_grad = False
+        
+        print("  Content encoder weights frozen (not trainable)")
         
     def forward(
         self, 
@@ -707,6 +726,7 @@ def create_model(config: ModelConfig) -> IRColorNet:
     print(f"  Encoder backbone: {config.encoder_backbone}")
     print(f"  Attention heads: {config.num_attention_heads}")
     print(f"  Skip connections: {config.use_skip_connections}")
+    print(f"  Content encoder frozen: {config.freeze_content_encoder}")
     
     return model
 

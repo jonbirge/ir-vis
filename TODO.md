@@ -1,10 +1,6 @@
 # IR-VIS
 
-- Fix deprecation warnings
-- Visualization results should use deterministic augmentations
-- Try ResNet18 encoder backbone
 - Try locking down the input encoder weights
-- Diagram generation of model architecture
 - Build inference interface for any resolution image
 - Test on simple real-world data
     - Same view in IR and VIS
