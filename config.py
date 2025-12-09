@@ -12,8 +12,11 @@ training logic.
 """
 
 import os
-from dataclasses import dataclass, field
-from typing import Tuple, List, Optional
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+
+import yaml
 
 
 @dataclass
@@ -56,10 +59,8 @@ class DataConfig:
     # Number of data loading workers (adjust based on your CPU cores)
     num_workers: int = 4
     
-    # Whether to apply additional augmentations beyond the crop
-    use_augmentation: bool = True
-    
     # Image statistics augmentation parameters
+    use_augmentation: bool = True
     random_horizontal_flip: bool = True
     color_jitter_brightness: float = 0.1
     color_jitter_contrast: float = 0.1
@@ -182,7 +183,7 @@ class TrainingConfig:
     batch_size: int = 10 # 10-12 seems to work well with 12 GB VRAM
     
     # Number of training epochs
-    num_epochs: int = 50
+    num_epochs: int = 75 # 50 works for initial training sans augmentation
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
@@ -253,11 +254,54 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     
     def __post_init__(self):
-        """Create output directories if they don't exist."""
-        os.makedirs(self.training.output_dir, exist_ok=True)
-        os.makedirs(os.path.join(self.training.output_dir, "checkpoints"), exist_ok=True)
-        os.makedirs(os.path.join(self.training.output_dir, "visualizations"), exist_ok=True)
-        os.makedirs(os.path.join(self.training.output_dir, "logs"), exist_ok=True)
+        """Make sure required output directories exist."""
+        self.ensure_output_dirs()
+
+    def ensure_output_dirs(self) -> None:
+        """Create the directories that training expects to write to."""
+        base = self.training.output_dir
+        os.makedirs(base, exist_ok=True)
+        os.makedirs(os.path.join(base, "checkpoints"), exist_ok=True)
+        os.makedirs(os.path.join(base, "visualizations"), exist_ok=True)
+        os.makedirs(os.path.join(base, "logs"), exist_ok=True)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the configuration making all nested dataclasses plain dicts."""
+        return asdict(self)
+
+    def save_yaml(self, path: Union[str, Path]) -> None:
+        """Persist the configuration as YAML to the provided path."""
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("w", encoding="utf-8") as stream:
+            yaml.safe_dump(self.to_dict(), stream, sort_keys=False)
+
+    @staticmethod
+    def _build_section(section_cls: Any, values: Optional[Mapping[str, Any]]) -> Any:
+        """Instantiate a dataclass section, defaulting when nothing is provided."""
+        if values is None:
+            return section_cls()
+        return section_cls(**values)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "Config":
+        """Create a Config object from a dictionary (e.g., parsed YAML)."""
+        return cls(
+            data=cls._build_section(DataConfig, data.get("data")),
+            model=cls._build_section(ModelConfig, data.get("model")),
+            loss=cls._build_section(LossConfig, data.get("loss")),
+            training=cls._build_section(TrainingConfig, data.get("training"))
+        )
+
+    @classmethod
+    def from_yaml(cls, path: Union[str, Path]) -> "Config":
+        """Load configuration values from a YAML file."""
+        source = Path(path)
+        with source.open("r", encoding="utf-8") as stream:
+            raw = yaml.safe_load(stream)
+        if raw is None:
+            raw = {}
+        return cls.from_dict(raw)
 
 
 def get_config() -> Config:

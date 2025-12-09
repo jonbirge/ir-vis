@@ -471,6 +471,12 @@ def train(config: Config) -> None:
         print(f"  GPU: {torch.cuda.get_device_name(0)}")
         print(f"  Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     
+    # Persist the active configuration so each run records its settings
+    config.ensure_output_dirs()
+    config_path = os.path.join(config.training.output_dir, "config.yaml")
+    config.save_yaml(config_path)
+    print(f"Saved configuration to {config_path}")
+    
     # Create data loaders (this may download the dataset)
     print("\nPreparing datasets...")
     train_loader, val_loader = get_dataloaders(config)
@@ -658,11 +664,18 @@ def main():
         choices=['cityscapes', 'coco'],
         help="Dataset to use: 'cityscapes' (reqs manual download) or 'coco' (default, auto-downloads)"
     )
+    parser.add_argument(
+        '--config', type=str, default=None,
+        help="Optional YAML configuration file to load"
+    )
     
     args = parser.parse_args()
     
-    # Get configuration
-    config = get_config()
+    # Get configuration, optionally from YAML
+    if args.config:
+        config = Config.from_yaml(args.config)
+    else:
+        config = get_config()
     
     # Apply command-line overrides
     if args.resume:
@@ -677,6 +690,9 @@ def main():
         config.training.learning_rate = args.lr
     if args.dataset:
         config.data.dataset_name = args.dataset
+
+    # Ensure directories exist after any overrides
+    config.ensure_output_dirs()
     
     # Run training
     train(config)

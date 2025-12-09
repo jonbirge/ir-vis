@@ -1,6 +1,5 @@
 # IR-VIS
 
-- Try locking down the input encoder weights
 - Build inference interface for any resolution image
 - Test on simple real-world data
     - Same view in IR and VIS
