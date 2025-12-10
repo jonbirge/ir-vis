@@ -59,11 +59,11 @@ class CityscapesLoader:
     """
     
     DOWNLOAD_INSTRUCTIONS = """
-    ╔══════════════════════════════════════════════════════════════════════╗
+    ╔═════════════════════════════════════════════════════════════════════╗
     ║                    CITYSCAPES DATASET SETUP                         ║
-    ╠══════════════════════════════════════════════════════════════════════╣
+    ╠═════════════════════════════════════════════════════════════════════╣
     ║ Cityscapes requires free registration to download.                  ║
-    ║                                                                      ║
+    ║                                                                     ║
     ║ OPTION 1: Automatic Download (Recommended)                          ║
     ║ ──────────────────────────────────────────                          ║
     ║ 1. Register at: https://www.cityscapes-dataset.com/register/        ║
@@ -78,22 +78,22 @@ class CityscapesLoader:
     ║      export CITYSCAPES_USERNAME="your_email@example.com"            ║
     ║      export CITYSCAPES_PASSWORD="your_password"                     ║
     ║ 3. Run the training script again                                    ║
-    ║                                                                      ║
+    ║                                                                     ║
     ║ OPTION 2: Manual Download                                           ║
     ║ ─────────────────────────                                           ║
     ║ 1. Register at: https://www.cityscapes-dataset.com/register/        ║
-    ║ 2. Login and go to: https://www.cityscapes-dataset.com/downloads/  ║
+    ║ 2. Login and go to: https://www.cityscapes-dataset.com/downloads/   ║
     ║ 3. Download: leftImg8bit_trainvaltest.zip (11GB)                    ║
     ║ 4. Extract to: {data_root}/cityscapes/                              ║
-    ║                                                                      ║
-    ║ Expected structure after extraction:                                 ║
+    ║                                                                     ║
+    ║ Expected structure after extraction:                                ║
     ║   {data_root}/cityscapes/leftImg8bit/train/aachen/...               ║
     ║   {data_root}/cityscapes/leftImg8bit/val/frankfurt/...              ║
-    ║                                                                      ║
+    ║                                                                     ║
     ║ OPTION 3: Use COCO instead (auto-downloads, no registration)        ║
     ║ ────────────────────────────────────────────────────────            ║
     ║   python train.py --dataset coco                                    ║
-    ╚══════════════════════════════════════════════════════════════════════╝
+    ╚═════════════════════════════════════════════════════════════════════╝
     """
     
     def __init__(self, data_root: str):
