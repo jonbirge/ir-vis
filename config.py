@@ -54,7 +54,7 @@ class DataConfig:
     # Crop ratio range for simulating different FOVs between IR and visible
     # e.g., (0.4, 0.7) means the IR crop will be 40-70% of the original image
     # This creates perspective/FOV mismatch that the network must learn to handle
-    crop_ratio_range: Tuple[float, float] = (0.45, 0.75)
+    crop_ratio_range: Tuple[float, float] = (0.5, 1.0)
     
     # Number of data loading workers (adjust based on your CPU cores)
     num_workers: int = 4

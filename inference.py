@@ -238,73 +238,30 @@ class IRColorizer:
         Returns:
             Colorized PIL Image
         """
-        # Tile-based inference using overlapping 256x256 tiles.
-        tile_size = 256
-        stride = 128  # 50% overlap
-
+        # Simple downsample-to-256 inference: resize IR to 256x256, run model,
+        # then upscale result back to the original IR size.
         orig_w, orig_h = ir_image.size
         if output_size is None:
             output_size = (orig_h, orig_w)
 
-        # Preprocess reference once
+        # Prepare resized IR and reference (both 256x256)
+        ir_resized = ir_image.convert('L').resize((256, 256), Image.BILINEAR)
+        ir_tensor = self.preprocess_ir(ir_resized)
+        # preprocess_ir returns a tensor on device
+        if isinstance(ir_tensor, tuple):
+            # backward compatibility if preprocess_ir returns tuple elsewhere
+            ir_tensor = ir_tensor[0]
+
         ref_tensor = self.preprocess_ref(ref_image)
 
-        # Prepare accumulators
-        accum = np.zeros((orig_h, orig_w, 3), dtype=np.float32)
-        weight = np.zeros((orig_h, orig_w), dtype=np.float32)
+        # Forward pass
+        outputs = self.model(ir_tensor, ref_tensor)
+        pred = outputs['output']
 
-        # Compute tile start positions ensuring coverage to right/bottom edges
-        def _starts(length, tile, stride):
-            if length <= tile:
-                return [0]
-            starts = list(range(0, length - tile + 1, stride))
-            last = length - tile
-            if starts[-1] != last:
-                starts.append(last)
-            return starts
+        # Postprocess (256x256)
+        result = self.postprocess(pred)
 
-        x_starts = _starts(orig_w, tile_size, stride)
-        y_starts = _starts(orig_h, tile_size, stride)
-
-        for y in y_starts:
-            for x in x_starts:
-                # Crop tile (may be smaller at edges)
-                tile = ir_image.crop((x, y, min(x + tile_size, orig_w), min(y + tile_size, orig_h)))
-
-                tile_w = min(tile_size, orig_w - x)
-                tile_h = min(tile_size, orig_h - y)
-
-                # Preprocess tile (pads to 256 if needed)
-                ir_tile_tensor = self.preprocess_ir_tile(tile, tile_size=tile_size)
-
-                # Forward pass for tile
-                outputs = self.model(ir_tile_tensor, ref_tensor)
-                pred = outputs['output']
-
-                # Postprocess tile -> PIL 256x256
-                tile_res = self.postprocess(pred)
-
-                # Convert to numpy and crop to actual tile size (in case of padding)
-                tile_np = np.array(tile_res).astype(np.float32)
-                tile_np = tile_np[0:tile_h, 0:tile_w, :]
-
-                # Accumulate and increment weight
-                accum[y:y + tile_h, x:x + tile_w, :] += tile_np
-                weight[y:y + tile_h, x:x + tile_w] += 1.0
-
-        # Avoid division by zero
-        mask = weight > 0
-        out_np = np.zeros_like(accum, dtype=np.uint8)
-        if mask.any():
-            # broadcast weight
-            w_b = weight[..., None]
-            avg = accum / np.maximum(w_b, 1e-8)
-            avg = np.clip(avg, 0, 255).astype(np.uint8)
-            out_np = avg
-
-        result = Image.fromarray(out_np)
-
-        # Ensure final size matches original (should already)
+        # Upscale back to original size
         if result.size != (orig_w, orig_h):
             result = result.resize((orig_w, orig_h), Image.BILINEAR)
 
