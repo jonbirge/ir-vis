@@ -127,35 +127,45 @@ class IRColorizer:
             image = image.convert('L')
         elif image.mode != 'L':
             image = image.convert('L')
-        # Determine target size: pad up to nearest multiple of 32
-        orig_w, orig_h = image.size
-        def _ceil_mult(x, m):
-            return ((x + m - 1) // m) * m
-        target_h = _ceil_mult(orig_h, 32)
-        target_w = _ceil_mult(orig_w, 32)
-
-        pad_left = (target_w - orig_w) // 2
-        pad_right = target_w - orig_w - pad_left
-        pad_top = (target_h - orig_h) // 2
-        pad_bottom = target_h - orig_h - pad_top
-
-        # Pad using edge fill (0) for IR; keep track to crop later
-        image = ImageOps.expand(image, border=(pad_left, pad_top, pad_right, pad_bottom), fill=0)
 
         # Convert to tensor [1, H, W]
         tensor = TF.to_tensor(image)
-        
+
         # Repeat to 3 channels [3, H, W]
         tensor = tensor.repeat(3, 1, 1)
-        
+
         # Normalize
         tensor = self.normalize_gray(tensor)
-        
+
         # Add batch dimension [1, 3, H, W]
         tensor = tensor.unsqueeze(0)
 
-        # Return tensor and original size and padding so the caller can crop
-        return tensor.to(self.device), (orig_w, orig_h), (pad_left, pad_top, pad_right, pad_bottom)
+        return tensor.to(self.device)
+
+    def preprocess_ir_tile(self, image: Image.Image, tile_size: int = 256) -> torch.Tensor:
+        """
+        Preprocess a 256x256 IR tile (pads smaller tiles to tile_size).
+        Returns a tensor [1,3,tile_size,tile_size] on the active device.
+        """
+        # Ensure grayscale
+        if image.mode == 'RGB' or image.mode == 'RGBA' or image.mode != 'L':
+            image = image.convert('L')
+
+        w, h = image.size
+        pad_right = max(0, tile_size - w)
+        pad_bottom = max(0, tile_size - h)
+        if pad_right != 0 or pad_bottom != 0:
+            # pad (left, top, right, bottom) - pad on right/bottom for edge tiles
+            image = ImageOps.expand(image, border=(0, 0, pad_right, pad_bottom), fill=0)
+
+        # Now image is tile_size x tile_size (or larger if caller passed larger - but we expect tile)
+        image = image.resize((tile_size, tile_size)) if image.size != (tile_size, tile_size) else image
+
+        tensor = TF.to_tensor(image)
+        tensor = tensor.repeat(3, 1, 1)
+        tensor = self.normalize_gray(tensor)
+        tensor = tensor.unsqueeze(0)
+        return tensor.to(self.device)
     
     def preprocess_ref(self, image: Image.Image) -> torch.Tensor:
         """
@@ -228,35 +238,73 @@ class IRColorizer:
         Returns:
             Colorized PIL Image
         """
-        # Store original size for output
+        # Tile-based inference using overlapping 256x256 tiles.
+        tile_size = 256
+        stride = 128  # 50% overlap
+
         orig_w, orig_h = ir_image.size
         if output_size is None:
             output_size = (orig_h, orig_w)
 
-        # Preprocess IR (returns tensor + orig size + padding)
-        ir_tensor, _, pad = self.preprocess_ir(ir_image)
-        pad_left, pad_top, pad_right, pad_bottom = pad
-
-        # Preprocess reference (resampled to 256x256)
+        # Preprocess reference once
         ref_tensor = self.preprocess_ref(ref_image)
-        
-        # Forward pass
-        outputs = self.model(ir_tensor, ref_tensor)
-        pred = outputs['output']
-        
-        # Postprocess
-        result = self.postprocess(pred)
 
-        # Crop to original size using padding info
-        # PIL size is (W, H)
-        left = pad_left
-        top = pad_top
-        right = result.width - pad_right
-        bottom = result.height - pad_bottom
+        # Prepare accumulators
+        accum = np.zeros((orig_h, orig_w, 3), dtype=np.float32)
+        weight = np.zeros((orig_h, orig_w), dtype=np.float32)
 
-        result = result.crop((left, top, right, bottom))
+        # Compute tile start positions ensuring coverage to right/bottom edges
+        def _starts(length, tile, stride):
+            if length <= tile:
+                return [0]
+            starts = list(range(0, length - tile + 1, stride))
+            last = length - tile
+            if starts[-1] != last:
+                starts.append(last)
+            return starts
 
-        # Ensure final size matches original
+        x_starts = _starts(orig_w, tile_size, stride)
+        y_starts = _starts(orig_h, tile_size, stride)
+
+        for y in y_starts:
+            for x in x_starts:
+                # Crop tile (may be smaller at edges)
+                tile = ir_image.crop((x, y, min(x + tile_size, orig_w), min(y + tile_size, orig_h)))
+
+                tile_w = min(tile_size, orig_w - x)
+                tile_h = min(tile_size, orig_h - y)
+
+                # Preprocess tile (pads to 256 if needed)
+                ir_tile_tensor = self.preprocess_ir_tile(tile, tile_size=tile_size)
+
+                # Forward pass for tile
+                outputs = self.model(ir_tile_tensor, ref_tensor)
+                pred = outputs['output']
+
+                # Postprocess tile -> PIL 256x256
+                tile_res = self.postprocess(pred)
+
+                # Convert to numpy and crop to actual tile size (in case of padding)
+                tile_np = np.array(tile_res).astype(np.float32)
+                tile_np = tile_np[0:tile_h, 0:tile_w, :]
+
+                # Accumulate and increment weight
+                accum[y:y + tile_h, x:x + tile_w, :] += tile_np
+                weight[y:y + tile_h, x:x + tile_w] += 1.0
+
+        # Avoid division by zero
+        mask = weight > 0
+        out_np = np.zeros_like(accum, dtype=np.uint8)
+        if mask.any():
+            # broadcast weight
+            w_b = weight[..., None]
+            avg = accum / np.maximum(w_b, 1e-8)
+            avg = np.clip(avg, 0, 255).astype(np.uint8)
+            out_np = avg
+
+        result = Image.fromarray(out_np)
+
+        # Ensure final size matches original (should already)
         if result.size != (orig_w, orig_h):
             result = result.resize((orig_w, orig_h), Image.BILINEAR)
 
