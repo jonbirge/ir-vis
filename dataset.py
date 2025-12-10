@@ -663,29 +663,29 @@ class IRColorPairDataset(Dataset):
         
         img_width, img_height = image.size
         
+        # If using fixed seed for deterministic augmentation, save random state
+        # and apply all augmentations with deterministic seed
+        if self.fixed_crop_seed is not None:
+            saved_state = random.getstate()
+            random.seed(self.fixed_crop_seed + idx)
+        
         # Apply color jitter to the whole image (if training)
         # This augments the color distribution the network sees
         if self.color_jitter is not None:
             image = self.color_jitter(image)
         
         # Random horizontal flip (applied consistently to all derived images)
-        # Skip if using fixed seed for deterministic visualization
-        do_flip = self.is_training and self.config.random_horizontal_flip and random.random() < 0.5 and self.fixed_crop_seed is None
+        do_flip = self.is_training and self.config.random_horizontal_flip and random.random() < 0.5
         if do_flip:
             image = TF.hflip(image)
         
         # Get crop parameters for simulated IR region
-        # Use deterministic seed if provided (for consistent visualization)
+        top, left, crop_h, crop_w = self._get_random_crop_params(img_width, img_height)
+        
+        # Restore random state if using fixed seed
+        # (so training set randomness isn't affected by visualization)
         if self.fixed_crop_seed is not None:
-            # Save current random state
-            saved_state = random.getstate()
-            # Set deterministic seed based on fixed_crop_seed + idx
-            random.seed(self.fixed_crop_seed + idx)
-            top, left, crop_h, crop_w = self._get_random_crop_params(img_width, img_height)
-            # Restore random state
             random.setstate(saved_state)
-        else:
-            top, left, crop_h, crop_w = self._get_random_crop_params(img_width, img_height)
         
         # Extract the crop region
         crop = TF.crop(image, top, left, crop_h, crop_w)
@@ -700,8 +700,7 @@ class IRColorPairDataset(Dataset):
         # Apply geometric augmentation ONLY to reference image (after resizing)
         # This simulates the reference being captured from a different perspective
         # than the IR input, forcing the network to learn robust feature matching
-        # Skip if using fixed seed for deterministic visualization
-        if self.is_training and self.config.use_augmentation and self.fixed_crop_seed is None:
+        if self.is_training and self.config.use_augmentation:
             ref_image = self._apply_geometric_augmentation(ref_image)
         
         # IR: grayscale crop resized to ir_image_size

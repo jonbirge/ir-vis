@@ -379,10 +379,11 @@ def visualize_samples(
     epoch: int = 0
 ) -> None:
     """
-    Generate and save visualization of model predictions.
+    Generate and save visualization of model predictions with augmentations.
     
-    Uses deterministic cropping (fixed seed per sample) to ensure consistent
-    visualization across epochs for easier comparison.
+    Uses training mode (is_training=True) with a fixed random seed to show how
+    the model handles augmented inputs consistently across epochs. This allows
+    visualizing the model's robustness to color jitter, flips, rotations, etc.
 
     Args:
         model: The neural network model
@@ -402,13 +403,13 @@ def visualize_samples(
     # Import dataset class
     from dataset import IRColorPairDataset
     
-    # Create a deterministic dataset with fixed crop seed
-    # This ensures the same crops are used for visualization across all epochs
+    # Create a dataset with training augmentations but fixed seed
+    # This shows the model handling augmented data consistently across epochs
     vis_dataset = IRColorPairDataset(
         image_source=original_dataset.image_paths[:num_samples],
         config=original_dataset.config,
-        is_training=False,
-        fixed_crop_seed=42  # Fixed seed ensures consistent crops across epochs
+        is_training=True,  # Enable augmentations
+        fixed_crop_seed=42  # Fixed seed ensures same augmentations every epoch
     )
 
     ir_list = []
