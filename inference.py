@@ -28,6 +28,7 @@ import torch.nn.functional as F # type: ignore
 import torchvision.transforms as T # type: ignore
 import torchvision.transforms.functional as TF # type: ignore
 from PIL import Image # type: ignore
+from PIL import ImageOps # type: ignore
 import numpy as np # type: ignore
 from tqdm import tqdm # type: ignore
 
@@ -50,12 +51,7 @@ class IRColorizer:
     and real IR images (thermal or near-IR sensors).
     """
     
-    def __init__(
-        self,
-        checkpoint_path: str,
-        device: str = 'cuda',
-        image_size: Tuple[int, int] = (256, 256)
-    ):
+    def __init__(self, checkpoint_path: str, device: str = 'cuda'):
         """
         Initialize the colorizer.
         
@@ -65,7 +61,6 @@ class IRColorizer:
             image_size: Size to resize images to (height, width)
         """
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
-        self.image_size = image_size
         
         # Load model
         self._load_model(checkpoint_path)
@@ -132,10 +127,21 @@ class IRColorizer:
             image = image.convert('L')
         elif image.mode != 'L':
             image = image.convert('L')
-        
-        # Resize
-        image = TF.resize(image, self.image_size)
-        
+        # Determine target size: pad up to nearest multiple of 32
+        orig_w, orig_h = image.size
+        def _ceil_mult(x, m):
+            return ((x + m - 1) // m) * m
+        target_h = _ceil_mult(orig_h, 32)
+        target_w = _ceil_mult(orig_w, 32)
+
+        pad_left = (target_w - orig_w) // 2
+        pad_right = target_w - orig_w - pad_left
+        pad_top = (target_h - orig_h) // 2
+        pad_bottom = target_h - orig_h - pad_top
+
+        # Pad using edge fill (0) for IR; keep track to crop later
+        image = ImageOps.expand(image, border=(pad_left, pad_top, pad_right, pad_bottom), fill=0)
+
         # Convert to tensor [1, H, W]
         tensor = TF.to_tensor(image)
         
@@ -147,8 +153,9 @@ class IRColorizer:
         
         # Add batch dimension [1, 3, H, W]
         tensor = tensor.unsqueeze(0)
-        
-        return tensor.to(self.device)
+
+        # Return tensor and original size and padding so the caller can crop
+        return tensor.to(self.device), (orig_w, orig_h), (pad_left, pad_top, pad_right, pad_bottom)
     
     def preprocess_ref(self, image: Image.Image) -> torch.Tensor:
         """
@@ -164,8 +171,8 @@ class IRColorizer:
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
-        # Resize
-        image = TF.resize(image, self.image_size)
+        # Resize reference to 256x256
+        image = TF.resize(image, (256, 256))
         
         # Convert to tensor
         tensor = TF.to_tensor(image)
@@ -175,7 +182,7 @@ class IRColorizer:
         
         # Add batch dimension
         tensor = tensor.unsqueeze(0)
-        
+
         return tensor.to(self.device)
     
     def postprocess(self, output: torch.Tensor) -> Image.Image:
@@ -222,11 +229,15 @@ class IRColorizer:
             Colorized PIL Image
         """
         # Store original size for output
+        orig_w, orig_h = ir_image.size
         if output_size is None:
-            output_size = ir_image.size[::-1]  # PIL uses (W, H), we want (H, W)
-        
-        # Preprocess
-        ir_tensor = self.preprocess_ir(ir_image)
+            output_size = (orig_h, orig_w)
+
+        # Preprocess IR (returns tensor + orig size + padding)
+        ir_tensor, _, pad = self.preprocess_ir(ir_image)
+        pad_left, pad_top, pad_right, pad_bottom = pad
+
+        # Preprocess reference (resampled to 256x256)
         ref_tensor = self.preprocess_ref(ref_image)
         
         # Forward pass
@@ -235,11 +246,20 @@ class IRColorizer:
         
         # Postprocess
         result = self.postprocess(pred)
-        
-        # Resize to original size if needed
-        if result.size[::-1] != output_size:
-            result = result.resize((output_size[1], output_size[0]), Image.BILINEAR)
-        
+
+        # Crop to original size using padding info
+        # PIL size is (W, H)
+        left = pad_left
+        top = pad_top
+        right = result.width - pad_right
+        bottom = result.height - pad_bottom
+
+        result = result.crop((left, top, right, bottom))
+
+        # Ensure final size matches original
+        if result.size != (orig_w, orig_h):
+            result = result.resize((orig_w, orig_h), Image.BILINEAR)
+
         return result
     
     def colorize_files(
@@ -420,95 +440,33 @@ def main():
     parser = argparse.ArgumentParser(
         description="Colorize IR images using trained model"
     )
-    
-    # Required arguments
-    parser.add_argument(
-        '--checkpoint', type=str, required=True,
-        help="Path to model checkpoint"
-    )
-    
-    # Input options (either single files or directories)
-    parser.add_argument(
-        '--ir', type=str, default=None,
-        help="Path to single IR image"
-    )
-    parser.add_argument(
-        '--ref', type=str, default=None,
-        help="Path to single reference image"
-    )
-    parser.add_argument(
-        '--ir-dir', type=str, default=None,
-        help="Directory of IR images"
-    )
-    parser.add_argument(
-        '--ref-dir', type=str, default=None,
-        help="Directory of reference images"
-    )
-    
-    # Output options
-    parser.add_argument(
-        '--output', type=str, default='./inference_results',
-        help="Output path (file for single image, directory for batch)"
-    )
-    parser.add_argument(
-        '--no-comparison', action='store_true',
-        help="Don't save comparison images"
-    )
-    
-    # Processing options
-    parser.add_argument(
-        '--device', type=str, default='cuda',
-        help="Device to run on (cuda/cpu)"
-    )
-    parser.add_argument(
-        '--image-size', type=int, default=256,
-        help="Image size for processing"
-    )
-    parser.add_argument(
-        '--ref-mode', type=str, default='match',
-        choices=['match', 'single', 'random'],
-        help="How to match references in batch mode"
-    )
-    
+    # Positional inputs: IR and reference image paths
+    parser.add_argument('ir_path', type=str, help='Path to IR image')
+    parser.add_argument('ref_path', type=str, help='Path to reference image')
+
+    parser.add_argument('--checkpoint', type=str, default='./outputs/checkpoints/best_model.pt',
+                        help='Path to model checkpoint (default: ./outputs/checkpoints/best_model.pt)')
+
+    parser.add_argument('--output', type=str, default='output.png',
+                        help='Output filename (default: output.png)')
+
+    parser.add_argument('--device', type=str, default='cuda', help='Device to run on (cuda/cpu)')
+    parser.add_argument('--no-comparison', action='store_true', help="Don't save comparison images")
+
     args = parser.parse_args()
-    
-    # Validate arguments
-    single_mode = args.ir is not None and args.ref is not None
-    batch_mode = args.ir_dir is not None and args.ref_dir is not None
-    
-    if not single_mode and not batch_mode:
-        parser.error("Must provide either (--ir and --ref) or (--ir-dir and --ref-dir)")
-    
+
     # Create colorizer
-    colorizer = IRColorizer(
-        checkpoint_path=args.checkpoint,
-        device=args.device,
-        image_size=(args.image_size, args.image_size)
-    )
-    
-    if single_mode:
-        # Process single image pair
-        output_path = args.output
-        if not output_path.endswith(('.png', '.jpg', '.jpeg')):
-            output_path = os.path.join(output_path, 'colorized.png')
-        
-        colorizer.colorize_files(
-            args.ir,
-            args.ref,
-            output_path,
-            save_comparison=not args.no_comparison
-        )
-    else:
-        # Process directories
-        process_directory(
-            colorizer,
-            args.ir_dir,
-            args.ref_dir,
-            args.output,
-            ref_mode=args.ref_mode
-        )
-    
-    print("Inference complete!")
+    colorizer = IRColorizer(checkpoint_path=args.checkpoint, device=args.device)
+
+    # Ensure output filename uses PNG
+    out_path = args.output
+    if not out_path.lower().endswith('.png'):
+        out_path = os.path.splitext(out_path)[0] + '.png'
+
+    # Run colorization
+    colorizer.colorize_files(args.ir_path, args.ref_path, out_path, save_comparison=not args.no_comparison)
+
+    print('Inference complete!')
 
 
 if __name__ == "__main__":
