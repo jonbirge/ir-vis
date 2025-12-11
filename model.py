@@ -614,7 +614,7 @@ class IRColorNet(nn.Module):
             output_channels=config.output_channels,
             use_skip_connections=config.use_skip_connections,
             use_instance_norm=config.use_instance_norm,
-            attention_layer=config.attention_layer  # NEW
+            attention_layer=config.attention_layer
         )
         
         # Initialize weights for non-pretrained layers

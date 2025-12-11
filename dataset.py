@@ -593,13 +593,13 @@ class IRColorPairDataset(Dataset):
         """
         Create a simulated IR image from a color crop.
         
-        The simulation extracts the red channel, which approximates near-IR
-        reflectance for many natural materials (vegetation, soil, etc.).
+        If use_ir_augmentation is enabled:
+            - Uses red channel as base
+            - Subtracts random amounts of green/blue channels
+            - Adds pixel noise for realism
         
-        For more realistic simulation, you could:
-        - Apply a gamma correction to simulate sensor response
-        - Add noise to simulate sensor characteristics
-        - Apply slight blur to simulate different optical properties
+        If use_ir_augmentation is disabled:
+            - Simple red channel extraction (legacy behavior)
         
         Args:
             crop: Color PIL Image of the cropped region
@@ -608,20 +608,46 @@ class IRColorPairDataset(Dataset):
             Grayscale PIL Image simulating IR capture
         """
         # Convert to numpy for channel manipulation
-        crop_np = np.array(crop)
+        crop_np = np.array(crop).astype(np.float32)
         
-        # Extract red channel (index 0 in RGB)
-        red_channel = crop_np[:, :, 0]
+        # Extract red channel as base
+        red = crop_np[:, :, 0]
         
-        # Optional: Add slight Gaussian noise to simulate sensor noise
-        # This helps the network become robust to noise
-        if self.is_training and random.random() < 0.5:
-            noise_std = random.uniform(0, 5)  # Small noise, 0-5 intensity levels
-            noise = np.random.normal(0, noise_std, red_channel.shape)
-            red_channel = np.clip(red_channel + noise, 0, 255).astype(np.uint8)
+        if self.is_training and self.config.use_ir_augmentation:
+            # Advanced IR simulation with channel subtraction and noise
+            green = crop_np[:, :, 1]
+            blue = crop_np[:, :, 2]
+            
+            # Random channel subtraction weights (0 to max_channel_subtract)
+            # Different random weights for green and blue to add variety
+            green_weight = random.uniform(0, self.config.max_channel_subtract)
+            blue_weight = random.uniform(0, self.config.max_channel_subtract)
+            
+            # Simulate IR: red channel minus weighted green/blue
+            ir_channel = red - (green_weight * green + blue_weight * blue)
+            
+            # Renormalize to [0, 255] range
+            min_val = ir_channel.min()
+            max_val = ir_channel.max()
+            
+            if max_val > min_val:  # Avoid division by zero
+                ir_channel = (ir_channel - min_val) / (max_val - min_val) * 255.0
+            else:
+                ir_channel = np.zeros_like(ir_channel)
+            
+            # Add Gaussian noise to simulate sensor characteristics
+            if self.config.ir_noise_std > 0:
+                noise = np.random.normal(0, self.config.ir_noise_std, ir_channel.shape)
+                ir_channel = ir_channel + noise
+            
+            # Clip to valid range and convert to uint8
+            ir_channel = np.clip(ir_channel, 0, 255).astype(np.uint8)
+        else:
+            # Simple red channel extraction (legacy behavior)
+            ir_channel = red.astype(np.uint8)
         
         # Convert to PIL grayscale image
-        ir_image = Image.fromarray(red_channel, mode='L')
+        ir_image = Image.fromarray(ir_channel, mode='L')
         
         return ir_image
     

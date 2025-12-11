@@ -73,6 +73,20 @@ class DataConfig:
     random_perspective: bool = True
     perspective_distortion: float = 0.2  # 0.0 to 0.5, higher = more distortion
     
+    # IR simulation parameters
+    # Enable advanced IR simulation (channel subtraction + noise)
+    # If False, uses simple red channel extraction (legacy behavior)
+    use_ir_augmentation: bool = True
+    
+    # Maximum weight for channel subtraction when simulating IR
+    # IR = R - random(0, max_channel_subtract) * (G + B)
+    # Only used if use_ir_augmentation is True
+    max_channel_subtract: float = 0.25
+    
+    # Pixel noise standard deviation for simulated IR (0-255 scale)
+    # Only used if use_ir_augmentation is True
+    ir_noise_std: float = 20.0
+    
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
     max_train_samples: Optional[int] = 32000
