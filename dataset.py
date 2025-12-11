@@ -596,10 +596,12 @@ class IRColorPairDataset(Dataset):
         If use_ir_augmentation is enabled:
             - Uses red channel as base
             - Subtracts random amounts of green/blue channels
-            - Adds pixel noise for realism
+            - Renormalizes to [0, 255]
         
         If use_ir_augmentation is disabled:
             - Simple red channel extraction (legacy behavior)
+        
+        Note: Noise is added later in __getitem__ after downsampling.
         
         Args:
             crop: Color PIL Image of the cropped region
@@ -614,7 +616,7 @@ class IRColorPairDataset(Dataset):
         red = crop_np[:, :, 0]
         
         if self.is_training and self.config.use_ir_augmentation:
-            # Advanced IR simulation with channel subtraction and noise
+            # Advanced IR simulation with channel subtraction
             green = crop_np[:, :, 1]
             blue = crop_np[:, :, 2]
             
@@ -635,13 +637,8 @@ class IRColorPairDataset(Dataset):
             else:
                 ir_channel = np.zeros_like(ir_channel)
             
-            # Add Gaussian noise to simulate sensor characteristics
-            if self.config.ir_noise_std > 0:
-                noise = np.random.normal(0, self.config.ir_noise_std, ir_channel.shape)
-                ir_channel = ir_channel + noise
-            
-            # Clip to valid range and convert to uint8
-            ir_channel = np.clip(ir_channel, 0, 255).astype(np.uint8)
+            # Convert to uint8
+            ir_channel = ir_channel.astype(np.uint8)
         else:
             # Simple red channel extraction (legacy behavior)
             ir_channel = red.astype(np.uint8)
@@ -731,6 +728,16 @@ class IRColorPairDataset(Dataset):
         
         # IR: grayscale crop resized to ir_image_size
         ir_image = TF.resize(ir_image, self.config.ir_image_size)
+        
+        # Add Gaussian noise to downsampled IR image
+        # Noise std is randomly selected from [0, max] per image
+        if self.is_training and self.config.use_ir_augmentation and self.config.ir_noise_std > 0:
+            ir_np = np.array(ir_image).astype(np.float32)
+            noise_std = random.uniform(0, self.config.ir_noise_std)
+            noise = np.random.normal(0, noise_std, ir_np.shape)
+            ir_np = ir_np + noise
+            ir_np = np.clip(ir_np, 0, 255).astype(np.uint8)
+            ir_image = Image.fromarray(ir_np, mode='L')
         
         # Target: color crop resized to ir_image_size (same size as IR)
         target_image = TF.resize(crop, self.config.ir_image_size)

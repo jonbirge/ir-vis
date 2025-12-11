@@ -80,11 +80,10 @@ class DataConfig:
     
     # Maximum weight for channel subtraction when simulating IR
     # IR = R - random(0, max_channel_subtract) * (G + B)
-    # Only used if use_ir_augmentation is True
     max_channel_subtract: float = 0.25
     
-    # Pixel noise standard deviation for simulated IR (0-255 scale)
-    # Only used if use_ir_augmentation is True
+    # Maximum pixel noise standard deviation for simulated IR (0-255 scale)
+    # Actual noise std is randomly selected from [0, ir_noise_std] per image
     ir_noise_std: float = 20.0
     
     # Maximum number of training samples to use (None = use all)
