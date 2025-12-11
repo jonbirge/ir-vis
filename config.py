@@ -41,7 +41,7 @@ class DataConfig:
     # Cityscapes is recommended for urban/outdoor scenes with consistent quality
     # Note: Cityscapes requires manual download after free registration at:
     #       https://www.cityscapes-dataset.com/
-    dataset_name: str = "coco"
+    dataset_name: str = "cityscapes"
     
     # Image dimensions for network input
     # IR image size (the image we want to colorize)
@@ -54,7 +54,7 @@ class DataConfig:
     # Crop ratio range for simulating different FOVs between IR and visible
     # e.g., (0.4, 0.7) means the IR crop will be 40-70% of the original image
     # This creates perspective/FOV mismatch that the network must learn to handle
-    crop_ratio_range: Tuple[float, float] = (0.5, 1.0)
+    crop_ratio_range: Tuple[float, float] = (0.25, 1.0)
     
     # Number of data loading workers (adjust based on your CPU cores)
     num_workers: int = 4
@@ -69,9 +69,9 @@ class DataConfig:
     
     # Geometric augmentation parameters (applied before cropping)
     random_rotation: bool = True
-    max_rotation_angle: float = 10.0  # degrees
+    max_rotation_angle: float = 30.0  # degrees
     random_perspective: bool = True
-    perspective_distortion: float = 0.1  # 0.0 to 0.5, higher = more distortion
+    perspective_distortion: float = 0.2  # 0.0 to 0.5, higher = more distortion
     
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
