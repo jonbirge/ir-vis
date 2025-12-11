@@ -17,11 +17,11 @@ fi
 
 IR_IMG="test_input.png"
 REF_IMG="test_ref.png"
-CKPT="outputs/checkpoints/best_model.pt"
+CKPT="model.pt"
 OUT_IMG="test_output.png"
 
 echo "Running inference: IR=$IR_IMG REF=$REF_IMG CKPT=$CKPT OUT=$OUT_IMG"
 
-python inference.py "$IR_IMG" "$REF_IMG" --checkpoint "$CKPT" --output "$OUT_IMG"
+python ../inference.py "$IR_IMG" "$REF_IMG" --checkpoint "$CKPT" --output "$OUT_IMG"
 
 echo "Done. Output: $OUT_IMG"
