@@ -1,33 +1,27 @@
 # Makefile for IR-to-Color Image Translation Project
 # 
 # Usage:
-#   make setup     - Create virtual environment and install dependencies
+#   make setup     - Install dependencies into the active virtualenv
 #   make train     - Train the model with default settings
 #   make clean     - Remove generated files (checkpoints, visualizations)
 #   make help      - Show all available targets
 
 # Configuration
 PYTHON := python
-VENV_DIR := venv
-VENV_PYTHON := $(VENV_DIR)/Scripts/python
-VENV_PIP := $(VENV_DIR)/Scripts/pip
+PIP := $(PYTHON) -m pip
 OUTPUT_DIR := outputs
 DATA_DIR := data
 
 # Detect OS for activation script path
 ifeq ($(OS),Windows_NT)
-    VENV_ACTIVATE := $(VENV_DIR)/Scripts/activate
     RM_CMD := rmdir /s /q
     MKDIR_CMD := mkdir
 else
-    VENV_ACTIVATE := $(VENV_DIR)/bin/activate
-    VENV_PYTHON := $(VENV_DIR)/bin/python
-    VENV_PIP := $(VENV_DIR)/bin/pip
     RM_CMD := rm -rf
     MKDIR_CMD := mkdir -p
 endif
 
-.PHONY: help setup venv install train train-coco train-cityscapes \
+.PHONY: help setup install train train-coco train-cityscapes \
         clean clean-checkpoints clean-visualizations clean-logs clean-data \
         test test-model test-dataset test-losses lint format \
         inference tensorboard check tarball
@@ -39,9 +33,8 @@ help:
 	@echo ============================================================
 	@echo.
 	@echo Setup targets:
-	@echo   make setup              - Create venv and install all dependencies
+	@echo   make setup              - Install dependencies into the active virtualenv
 	@echo   make install            - Install dependencies (assumes venv active)
-	@echo   make venv               - Show how to activate the virtual environment
 	@echo.
 	@echo Training targets:
 	@echo   make train              - Train with default settings (COCO dataset)
@@ -55,9 +48,6 @@ help:
 	@echo.
 	@echo Testing targets:
 	@echo   make test               - Run all tests
-	@echo   make test-model         - Test model architecture
-	@echo   make test-dataset       - Test dataset loading
-	@echo   make test-losses        - Test loss functions
 	@echo.
 	@echo Cleaning targets:
 	@echo   make clean              - Remove all generated files
@@ -77,55 +67,23 @@ help:
 # Setup Targets
 # ============================================================
 
-setup: $(VENV_DIR) install
+setup: install
 	@echo.
 	@echo ============================================================
 	@echo Setup complete!
 	@echo.
-	@echo To activate the virtual environment:
-ifeq ($(OS),Windows_NT)
-	@echo   Windows CMD:        $(VENV_DIR)\Scripts\activate.bat
-	@echo   Windows PowerShell: $(VENV_DIR)\Scripts\Activate.ps1
-else
-	@echo   source $(VENV_ACTIVATE)
-endif
+	@echo Make sure you have activated your virtual environment before running targets.
 	@echo.
 	@echo Then run: make train
 	@echo ============================================================
 
-$(VENV_DIR):
-	@echo Creating virtual environment in $(VENV_DIR)...
-	$(PYTHON) -m venv $(VENV_DIR)
-	@echo Virtual environment created.
-
 install:
-	@echo Installing dependencies...
-	$(VENV_PIP) install --upgrade pip
-	$(VENV_PIP) install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-	$(VENV_PIP) install pillow numpy matplotlib tqdm requests
+	@echo Installing dependencies into active virtualenv...
+	$(PIP) install --upgrade pip
+	$(PIP) install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+	$(PIP) install pillow numpy matplotlib tqdm requests
 	@echo.
 	@echo Dependencies installed successfully!
-
-# Show activation instructions
-venv:
-	@echo ============================================================
-	@echo To activate the virtual environment:
-	@echo.
-ifeq ($(OS),Windows_NT)
-	@echo   Windows CMD:
-	@echo     $(VENV_DIR)\Scripts\activate.bat
-	@echo.
-	@echo   Windows PowerShell:
-	@echo     $(VENV_DIR)\Scripts\Activate.ps1
-	@echo.
-	@echo   Git Bash / MSYS2:
-	@echo     source $(VENV_DIR)/Scripts/activate
-else
-	@echo   source $(VENV_ACTIVATE)
-endif
-	@echo.
-	@echo To deactivate: deactivate
-	@echo ============================================================
 
 # ============================================================
 # Training Targets
@@ -135,26 +93,26 @@ train: train-coco
 
 train-coco:
 	@echo Starting training with COCO dataset...
-	$(VENV_PYTHON) train.py --dataset coco
+	$(PYTHON) train.py --dataset coco
 
 train-cityscapes:
 	@echo Starting training with Cityscapes dataset...
 	@echo NOTE: Cityscapes requires manual download. See dataset.py for instructions.
-	$(VENV_PYTHON) train.py --dataset cityscapes
+	$(PYTHON) train.py --dataset cityscapes
 
 train-debug:
 	@echo Starting debug training run (limited samples)...
-	$(VENV_PYTHON) -c "from config import get_config; c = get_config(); c.data.max_train_samples = 100; c.training.num_epochs = 2; c.training.batch_size = 4; exec(open('train.py').read().replace('config = get_config()', 'config = c'))"
+	$(PYTHON) -c "from config import get_config; c = get_config(); c.data.max_train_samples = 100; c.training.num_epochs = 2; c.training.batch_size = 4; exec(open('train.py').read().replace('config = get_config()', 'config = c'))"
 	@echo If the above doesn't work, modify config.py temporarily for debugging.
 
 resume:
 	@echo Resuming training from latest checkpoint...
-	$(VENV_PYTHON) train.py
+	$(PYTHON) train.py
 
 # Training with custom parameters
 train-custom:
 	@echo Usage: make train-custom EPOCHS=100 BATCH=16 LR=0.0001
-	$(VENV_PYTHON) train.py --epochs $(EPOCHS) --batch-size $(BATCH) --lr $(LR)
+	$(PYTHON) train.py --epochs $(EPOCHS) --batch-size $(BATCH) --lr $(LR)
 
 # ============================================================
 # Inference Targets
@@ -164,17 +122,17 @@ inference:
 	@echo Running inference...
 	@echo Usage: make inference-single IR=path/to/ir.png REF=path/to/ref.png
 	@echo        make inference-batch IR_DIR=path/to/ir_images REF_DIR=path/to/ref_images
-	$(VENV_PYTHON) inference.py --checkpoint $(OUTPUT_DIR)/checkpoints/best_model.pt --help
+	$(PYTHON) inference.py --checkpoint $(OUTPUT_DIR)/checkpoints/best_model.pt --help
 
 inference-single:
-	$(VENV_PYTHON) inference.py \
+	$(PYTHON) inference.py \
 		--checkpoint $(OUTPUT_DIR)/checkpoints/best_model.pt \
 		--ir $(IR) \
 		--ref $(REF) \
 		--output ./inference_results
 
 inference-batch:
-	$(VENV_PYTHON) inference.py \
+	$(PYTHON) inference.py \
 		--checkpoint $(OUTPUT_DIR)/checkpoints/best_model.pt \
 		--ir-dir $(IR_DIR) \
 		--ref-dir $(REF_DIR) \
@@ -186,7 +144,7 @@ inference-batch:
 
 test: 
 	@echo Running all tests...
-	$(VENV_PYTHON) tests.py
+	$(PYTHON) tests.py
 
 check: test
 	@echo.
@@ -194,32 +152,32 @@ check: test
 
 test-model:
 	@echo Testing model architecture...
-	$(VENV_PYTHON) tests.py TestModel
+	$(PYTHON) tests.py TestModel
 
 test-dataset:
 	@echo Testing dataset loading...
-	$(VENV_PYTHON) tests.py TestDataset
+	$(PYTHON) tests.py TestDataset
 
 test-losses:
 	@echo Testing loss functions...
-	$(VENV_PYTHON) tests.py TestLosses
+	$(PYTHON) tests.py TestLosses
 
 test-utils:
 	@echo Testing utility functions...
-	$(VENV_PYTHON) tests.py TestUtils
+	$(PYTHON) tests.py TestUtils
 
 test-config:
 	@echo Testing configuration...
-	$(VENV_PYTHON) tests.py TestConfig
+	$(PYTHON) tests.py TestConfig
 
 test-integration:
 	@echo Running integration tests...
-	$(VENV_PYTHON) tests.py TestIntegration
+	$(PYTHON) tests.py TestIntegration
 
 test-quick:
 	@echo Running quick component tests (no integration)...
-	$(VENV_PYTHON) tests.py TestConfig
-	$(VENV_PYTHON) tests.py TestUtils
+	$(PYTHON) tests.py TestConfig
+	$(PYTHON) tests.py TestUtils
 
 # ============================================================
 # Cleaning Targets
@@ -282,43 +240,35 @@ clean-all: clean clean-data clean-inference
 	@echo.
 	@echo All generated files and data removed.
 
-clean-venv:
-	@echo Removing virtual environment...
-ifeq ($(OS),Windows_NT)
-	@if exist "$(VENV_DIR)" $(RM_CMD) "$(VENV_DIR)" 2>nul || echo No venv to remove
-else
-	$(RM_CMD) $(VENV_DIR) 2>/dev/null || echo "No venv to remove"
-endif
-
 # ============================================================
 # Utility Targets
 # ============================================================
 
 lint:
 	@echo Running linting...
-	$(VENV_PIP) install flake8 --quiet 2>nul || true
-	$(VENV_PYTHON) -m flake8 *.py --max-line-length=100 --ignore=E501,W503
+	$(PIP) install flake8 --quiet 2>nul || true
+	$(PYTHON) -m flake8 *.py --max-line-length=100 --ignore=E501,W503
 
 format:
 	@echo Formatting code with black...
-	$(VENV_PIP) install black --quiet 2>nul || true
-	$(VENV_PYTHON) -m black *.py --line-length=100
+	$(PIP) install black --quiet 2>nul || true
+	$(PYTHON) -m black *.py --line-length=100
 
 tensorboard:
 	@echo Launching TensorBoard...
 	@echo NOTE: TensorBoard integration requires adding TensorBoard logging to train.py
-	$(VENV_PIP) install tensorboard --quiet 2>nul || true
-	$(VENV_PYTHON) -m tensorboard.main --logdir=$(OUTPUT_DIR)/logs
+	$(PIP) install tensorboard --quiet 2>nul || true
+	$(PYTHON) -m tensorboard.main --logdir=$(OUTPUT_DIR)/logs
 
 # Create a tarball of the project (excluding outputs, data, venv)
 tarball:
 	@echo Creating project tarball...
 ifeq ($(OS),Windows_NT)
-	@powershell -Command "$$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $$tarname = \"ir-color-translation_$$timestamp.tar.bz2\"; tar --exclude='$(OUTPUT_DIR)' --exclude='$(DATA_DIR)' --exclude='$(VENV_DIR)' --exclude='*.tar.bz2' --exclude='__pycache__' --exclude='.git' --exclude='*.pyc' -cvjf $$tarname .; Write-Host \"Created $$tarname\""
+	@powershell -Command "$$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'; $$tarname = \"ir-color-translation_$$timestamp.tar.bz2\"; tar --exclude='$(OUTPUT_DIR)' --exclude='$(DATA_DIR)' --exclude='venv' --exclude='*.tar.bz2' --exclude='__pycache__' --exclude='.git' --exclude='*.pyc' -cvjf $$tarname .; Write-Host \"Created $$tarname\""
 else
 	@timestamp=$$(date +%Y%m%d_%H%M%S); \
 	tarname="ir-color-translation_$$timestamp.tar.bz2"; \
-	tar --exclude='$(OUTPUT_DIR)' --exclude='$(DATA_DIR)' --exclude='$(VENV_DIR)' \
+	tar --exclude='$(OUTPUT_DIR)' --exclude='$(DATA_DIR)' --exclude='venv' \
 	    --exclude='*.tar.bz2' --exclude='__pycache__' --exclude='.git' --exclude='*.pyc' \
 	    -cvjf "$$tarname" .; \
 	echo "Created $$tarname"
@@ -326,7 +276,7 @@ endif
 
 # Show current configuration
 show-config:
-	$(VENV_PYTHON) config.py
+	$(PYTHON) config.py
 
 # Count lines of code
 loc:
@@ -339,7 +289,7 @@ endif
 
 # Show GPU info
 gpu-info:
-	$(VENV_PYTHON) -c "import torch; print('CUDA Available:', torch.cuda.is_available()); print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'); print('Memory:', f'{torch.cuda.get_device_properties(0).total_memory/1e9:.1f} GB' if torch.cuda.is_available() else 'N/A')"
+	$(PYTHON) -c "import torch; print('CUDA Available:', torch.cuda.is_available()); print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'); print('Memory:', f'{torch.cuda.get_device_properties(0).total_memory/1e9:.1f} GB' if torch.cuda.is_available() else 'N/A')"
 
 # ============================================================
 # Development Targets
@@ -347,9 +297,9 @@ gpu-info:
 
 # Create requirements.txt from current environment
 freeze:
-	$(VENV_PIP) freeze > requirements.txt
+	$(PIP) freeze > requirements.txt
 	@echo Requirements saved to requirements.txt
 
 # Install from requirements.txt
 install-requirements:
-	$(VENV_PIP) install -r requirements.txt
+	$(PIP) install -r requirements.txt
