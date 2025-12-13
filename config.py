@@ -131,7 +131,6 @@ class ModelConfig:
     attention_dropout: float = 0.1
     
     # Decoder configuration
-    decoder_blocks: int = 4
     use_skip_connections: bool = True
     use_instance_norm: bool = True
     output_channels: int = 3
