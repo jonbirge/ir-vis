@@ -41,7 +41,7 @@ class DataConfig:
     # Cityscapes is recommended for urban/outdoor scenes with consistent quality
     # Note: Cityscapes requires manual download after free registration at:
     #       https://www.cityscapes-dataset.com/
-    dataset_name: str = "cityscapes"
+    dataset_name: str = "coco"
     
     # Image dimensions for network input
     # IR image size (the image we want to colorize)
@@ -57,7 +57,7 @@ class DataConfig:
     crop_ratio_range: Tuple[float, float] = (0.25, 1.0)
     
     # Number of data loading workers (adjust based on your CPU cores)
-    num_workers: int = 4
+    num_workers: int = 8
     
     # Image statistics augmentation parameters
     use_augmentation: bool = True
@@ -69,9 +69,9 @@ class DataConfig:
     
     # Geometric augmentation parameters (applied before cropping)
     random_rotation: bool = True
-    max_rotation_angle: float = 30.0  # degrees
+    max_rotation_angle: float = 15.0  # degrees
     random_perspective: bool = True
-    perspective_distortion: float = 0.2  # 0.0 to 0.5, higher = more distortion
+    perspective_distortion: float = 0.1  # 0.0 to 0.5, higher = more distortion
     
     # IR simulation parameters
     # Enable advanced IR simulation (channel subtraction + noise)
@@ -80,11 +80,11 @@ class DataConfig:
     
     # Maximum weight for channel subtraction when simulating IR
     # IR = R - random(0, max_channel_subtract) * (G + B)
-    max_channel_subtract: float = 0.25
+    max_channel_subtract: float = 0.5
     
     # Maximum pixel noise standard deviation for simulated IR (0-255 scale)
     # Actual noise std is randomly selected from [0, ir_noise_std] per image
-    ir_noise_std: float = 20.0
+    ir_noise_std: float = 10.0
     
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
@@ -124,7 +124,7 @@ class ModelConfig:
     attention_layer: str = "layer3"
     
     # Number of attention heads in the feature matching module
-    # Increased to 16 to capture more diverse spatial correspondences
+    # Increase to 16 to capture more diverse spatial correspondences
     num_attention_heads: int = 16
     
     # Dropout rate in attention layers
@@ -157,16 +157,16 @@ class LossConfig:
     
     # Perceptual loss weight (VGG feature matching)
     # Higher values produce sharper, more detailed results but may introduce artifacts
-    perceptual_weight: float = 1.0
+    perceptual_weight: float = 0.0
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
     # Note: Reduced from 50.0 to 10.0 for numerical stability
-    style_weight: float = 5.0
+    style_weight: float = 0.0
     
     # Color histogram loss weight
     # Encourages the output to have similar color distribution to ground truth
-    histogram_weight: float = 0.5
+    histogram_weight: float = 0.0
     
     # VGG layers to use for perceptual loss
     # Earlier layers capture low-level features; later layers capture semantics
@@ -193,10 +193,10 @@ class TrainingConfig:
     # RTX 3090 (24GB): batch_size=16 should work
     # RTX 4090 (24GB): batch_size=16-20
     # A100 (40GB): batch_size=32
-    batch_size: int = 10 # 10-12 seems to work well with 12 GB VRAM
+    batch_size: int = 32 # 10-12 seems to work well with 12 GB VRAM
     
     # Number of training epochs
-    num_epochs: int = 100 # 50 works for initial training sans augmentation
+    num_epochs: int = 100
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
@@ -220,7 +220,7 @@ class TrainingConfig:
     gradient_clip_norm: float = 0.5
     
     # How often to save checkpoints (in epochs)
-    save_every: int = 1
+    save_every: int = 5
     
     # How often to log training metrics (in iterations)
     log_every: int = 50
@@ -331,10 +331,6 @@ def get_config() -> Config:
 
 # Quick sanity check when module is run directly
 if __name__ == "__main__":
+    # Reflectively serialize the full default configuration and pretty-print it.
     config = get_config()
-    print("Configuration loaded successfully!")
-    print(f"  Dataset: {config.data.dataset_name}")
-    print(f"  Encoder backbone: {config.model.encoder_backbone}")
-    print(f"  Batch size: {config.training.batch_size}")
-    print(f"  Learning rate: {config.training.learning_rate}")
-    print(f"  Output directory: {config.training.output_dir}")
+    print(yaml.safe_dump(config.to_dict(), sort_keys=False, allow_unicode=True))

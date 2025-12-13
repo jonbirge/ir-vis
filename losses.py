@@ -201,7 +201,9 @@ class PerceptualLoss(nn.Module):
     def forward(
         self, 
         pred: torch.Tensor, 
-        target: torch.Tensor
+        target: torch.Tensor,
+        pred_features: Optional[Dict[str, torch.Tensor]] = None,
+        target_features: Optional[Dict[str, torch.Tensor]] = None
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Compute perceptual loss.
@@ -209,15 +211,19 @@ class PerceptualLoss(nn.Module):
         Args:
             pred: Predicted image [B, 3, H, W] in [-1, 1] range
             target: Target image [B, 3, H, W] in [-1, 1] range
+            pred_features: Optional precomputed features for pred
+            target_features: Optional precomputed features for target
             
         Returns:
             Tuple of:
             - Total perceptual loss (scalar)
             - Dictionary of per-layer losses
         """
-        # Extract features
-        pred_features = self.vgg(pred)
-        target_features = self.vgg(target)
+        # Extract features if not provided
+        if pred_features is None:
+            pred_features = self.vgg(pred)
+        if target_features is None:
+            target_features = self.vgg(target)
         
         # Compute loss for each layer
         layer_losses = {}
@@ -262,7 +268,9 @@ class StyleLoss(nn.Module):
     def forward(
         self, 
         pred: torch.Tensor, 
-        target: torch.Tensor
+        target: torch.Tensor,
+        pred_features: Optional[Dict[str, torch.Tensor]] = None,
+        target_features: Optional[Dict[str, torch.Tensor]] = None
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Compute style loss.
@@ -270,15 +278,19 @@ class StyleLoss(nn.Module):
         Args:
             pred: Predicted image [B, 3, H, W] in [-1, 1] range
             target: Target image [B, 3, H, W] in [-1, 1] range
+            pred_features: Optional precomputed features for pred
+            target_features: Optional precomputed features for target
             
         Returns:
             Tuple of:
             - Total style loss (scalar)
             - Dictionary of per-layer losses
         """
-        # Extract features
-        pred_features = self.vgg(pred)
-        target_features = self.vgg(target)
+        # Extract features if not provided
+        if pred_features is None:
+            pred_features = self.vgg(pred)
+        if target_features is None:
+            target_features = self.vgg(target)
         
         # Compute Gram matrix loss for each layer
         layer_losses = {}
@@ -408,6 +420,9 @@ class CombinedLoss(nn.Module):
     - Higher perceptual weight: Sharper but may have artifacts
     - Higher style weight: Better color transfer from reference
     - Higher histogram weight: More globally accurate colors
+    
+    Optimization: If both perceptual_weight and style_weight are zero,
+    VGG feature extraction is skipped entirely for efficiency.
     """
     
     def __init__(self, config: LossConfig):
@@ -421,10 +436,23 @@ class CombinedLoss(nn.Module):
         
         self.config = config
         
-        # Individual loss components
-        self.perceptual_loss = PerceptualLoss(config.vgg_layers)
-        self.style_loss = StyleLoss(config.style_layers)
-        self.histogram_loss = ColorHistogramLoss()
+        # Check if we need VGG-based losses
+        self.use_vgg = (config.perceptual_weight > 0 or config.style_weight > 0)
+        
+        # Individual loss components - only create VGG-based ones if needed
+        if self.use_vgg:
+            # Combine all required layers for efficient single-pass feature extraction
+            all_layers = list(set(config.vgg_layers + config.style_layers))
+            self.vgg_features = VGGFeatures(all_layers)
+            
+            if config.perceptual_weight > 0:
+                self.perceptual_loss = PerceptualLoss(config.vgg_layers)
+            
+            if config.style_weight > 0:
+                self.style_loss = StyleLoss(config.style_layers)
+        
+        if config.histogram_weight > 0:
+            self.histogram_loss = ColorHistogramLoss()
         
     def forward(
         self, 
@@ -453,27 +481,53 @@ class CombinedLoss(nn.Module):
         l1_loss = F.l1_loss(pred, target)
         losses['l1'] = l1_loss
         
-        # Perceptual loss
-        perceptual_loss, perceptual_details = self.perceptual_loss(pred, target)
-        losses['perceptual'] = perceptual_loss
-        losses.update(perceptual_details)
+        total_loss = self.config.l1_weight * l1_loss
         
-        # Style loss
-        style_loss, style_details = self.style_loss(pred, target)
-        losses['style'] = style_loss
-        losses.update(style_details)
+        # VGG-based losses (perceptual and style)
+        # Extract features once and reuse if both losses are needed
+        if self.use_vgg:
+            pred_features = self.vgg_features(pred)
+            target_features = self.vgg_features(target)
+            
+            # Perceptual loss
+            if self.config.perceptual_weight > 0:
+                # Filter features to only perceptual layers
+                pred_perc = {k: v for k, v in pred_features.items() if k in self.config.vgg_layers}
+                target_perc = {k: v for k, v in target_features.items() if k in self.config.vgg_layers}
+                perceptual_loss, perceptual_details = self.perceptual_loss(
+                    pred, target, pred_perc, target_perc
+                )
+                losses['perceptual'] = perceptual_loss
+                losses.update(perceptual_details)
+                total_loss = total_loss + self.config.perceptual_weight * perceptual_loss
+            else:
+                losses['perceptual'] = torch.tensor(0.0, device=pred.device)
+            
+            # Style loss
+            if self.config.style_weight > 0:
+                # Filter features to only style layers
+                pred_style = {k: v for k, v in pred_features.items() if k in self.config.style_layers}
+                target_style = {k: v for k, v in target_features.items() if k in self.config.style_layers}
+                style_loss, style_details = self.style_loss(
+                    pred, target, pred_style, target_style
+                )
+                losses['style'] = style_loss
+                losses.update(style_details)
+                total_loss = total_loss + self.config.style_weight * style_loss
+            else:
+                losses['style'] = torch.tensor(0.0, device=pred.device)
+        else:
+            # No VGG computation needed
+            losses['perceptual'] = torch.tensor(0.0, device=pred.device)
+            losses['style'] = torch.tensor(0.0, device=pred.device)
         
         # Color histogram loss
-        histogram_loss = self.histogram_loss(pred, target)
-        losses['histogram'] = histogram_loss
-        
-        # Compute weighted total
-        total_loss = (
-            self.config.l1_weight * l1_loss +
-            self.config.perceptual_weight * perceptual_loss +
-            self.config.style_weight * style_loss +
-            self.config.histogram_weight * histogram_loss
-        )
+        if self.config.histogram_weight > 0:
+            histogram_loss = self.histogram_loss(pred, target)
+            losses['histogram'] = histogram_loss
+            total_loss = total_loss + self.config.histogram_weight * histogram_loss
+        else:
+            losses['histogram'] = torch.tensor(0.0, device=pred.device)
         
         # Check for NaN and replace with L1 loss only if needed
         if torch.isnan(total_loss):
@@ -500,6 +554,7 @@ if __name__ == "__main__":
     
     # Test with random tensors
     print("Testing loss functions...")
+    print(f"VGG computation enabled: {criterion.use_vgg}")
     
     pred = torch.randn(2, 3, 256, 256).clamp(-1, 1)
     target = torch.randn(2, 3, 256, 256).clamp(-1, 1)
