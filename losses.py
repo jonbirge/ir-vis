@@ -441,6 +441,7 @@ class CombinedLoss(nn.Module):
         
         # Individual loss components - only create VGG-based ones if needed
         if self.use_vgg:
+            print("INFO: VGG-based losses enabled")
             # Combine all required layers for efficient single-pass feature extraction
             all_layers = list(set(config.vgg_layers + config.style_layers))
             self.vgg_features = VGGFeatures(all_layers)
@@ -450,6 +451,8 @@ class CombinedLoss(nn.Module):
             
             if config.style_weight > 0:
                 self.style_loss = StyleLoss(config.style_layers)
+        else:
+            print("INFO: VGG-based losses disabled")
         
         if config.histogram_weight > 0:
             self.histogram_loss = ColorHistogramLoss()
