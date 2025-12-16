@@ -78,7 +78,8 @@ def save_checkpoint(
     epoch: int,
     loss: float,
     config: Any,
-    filepath: str
+    filepath: str,
+    extra_metadata: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Save a training checkpoint.
@@ -103,6 +104,9 @@ def save_checkpoint(
         'config': config,
         'timestamp': datetime.now().isoformat()
     }
+
+    if extra_metadata:
+        checkpoint.update(extra_metadata)
     
     if scheduler is not None:
         checkpoint['scheduler_state_dict'] = scheduler.state_dict()
@@ -153,11 +157,16 @@ def load_checkpoint(
     if scheduler is not None and 'scheduler_state_dict' in checkpoint:
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     
-    metadata = {
+    metadata: Dict[str, Any] = {
         'epoch': checkpoint.get('epoch', 0),
         'loss': checkpoint.get('loss', float('inf')),
-        'timestamp': checkpoint.get('timestamp', 'unknown')
+        'timestamp': checkpoint.get('timestamp', 'unknown'),
     }
+
+    # Optional curriculum metadata (backward compatible)
+    for key in ('global_epoch', 'stage_idx', 'stage_epoch'):
+        if key in checkpoint:
+            metadata[key] = checkpoint[key]
     
     print(f"Loaded checkpoint from epoch {metadata['epoch']} (loss: {metadata['loss']:.6f})")
     

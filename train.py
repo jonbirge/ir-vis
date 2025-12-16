@@ -23,7 +23,7 @@ The script uses configuration from config.py.
 import os
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union, List, Any
 import argparse
 
 import torch # type: ignore
@@ -35,9 +35,10 @@ from tqdm import tqdm # type: ignore
 import random
 import numpy as np # type: ignore
 
-from config import Config, get_config
+from config import Config, Curriculum, get_config, get_curriculum
+from config import load_experiment_config
 from dataset import get_dataloaders, denormalize
-from model import IRColorNet, create_model
+from model import create_model
 from losses import CombinedLoss
 from utils import (
     set_seed, save_checkpoint, load_checkpoint,
@@ -96,7 +97,8 @@ def create_optimizer(
 
 def create_scheduler(
     optimizer: torch.optim.Optimizer,
-    config: Config
+    config: Config,
+    total_epochs: Optional[int] = None
 ) -> Optional[torch.optim.lr_scheduler._LRScheduler]:
     """
     Create learning rate scheduler.
@@ -115,12 +117,14 @@ def create_scheduler(
         Configured scheduler or None
     """
     scheduler_type = config.training.lr_scheduler.lower()
+    if total_epochs is None:
+        total_epochs = config.training.num_epochs
     
     if scheduler_type == 'cosine':
         # Cosine annealing with warm restarts
         scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=config.training.num_epochs,
+            T_max=total_epochs,
             eta_min=config.training.lr_min
         )
     elif scheduler_type == 'step':
@@ -634,6 +638,285 @@ def train(config: Config) -> None:
     print(f"Outputs saved to: {config.training.output_dir}")
 
 
+def _infer_curriculum_position(curriculum: Curriculum, global_epoch: int) -> Tuple[int, int, int]:
+    """Infer (stage_idx, stage_epoch, global_epoch) given a global epoch index."""
+    if global_epoch < 0:
+        return 0, 0, 0
+
+    remaining = global_epoch
+    for stage_idx, stage in enumerate(curriculum.stages):
+        stage_len = int(stage.training.num_epochs)
+        if remaining < stage_len:
+            return stage_idx, remaining, global_epoch
+        remaining -= stage_len
+
+    # If we're beyond the end (e.g., resume after completion), clamp to last stage end.
+    last_idx = len(curriculum.stages) - 1
+    return last_idx, int(curriculum.stages[last_idx].training.num_epochs), global_epoch
+
+
+def _apply_overrides_to_curriculum(curriculum: Curriculum, args: argparse.Namespace) -> None:
+    """Apply safe CLI overrides to all stages of a curriculum (in-place)."""
+    if args.output:
+        # TrainingConfig may be shared across stages; mutate once is enough.
+        curriculum.stages[0].training.output_dir = args.output
+        for stage in curriculum.stages[1:]:
+            stage.training.output_dir = args.output
+
+    if args.resume:
+        curriculum.stages[0].training.resume_checkpoint = args.resume
+
+    if args.batch_size:
+        curriculum.stages[0].training.batch_size = args.batch_size
+    if args.lr:
+        curriculum.stages[0].training.learning_rate = args.lr
+
+
+def train_with_curriculum(curriculum: Curriculum) -> None:
+    """Train using a Curriculum (multi-stage) with global epoch numbering."""
+    print("=" * 60)
+    print("IR-to-Color Image Translation Training (Curriculum)")
+    print("=" * 60)
+
+    # Use stage 0 for global training knobs (shared output dir, seed, device, etc.)
+    base_config = curriculum.stages[0]
+    total_epochs = curriculum.total_epochs
+
+    set_seed(base_config.training.seed)
+    print(f"\nRandom seed: {base_config.training.seed}")
+
+    device = torch.device(base_config.training.device if torch.cuda.is_available() else 'cpu')
+    print(f"Device: {device}")
+    if device.type == 'cuda':
+        print(f"  GPU: {torch.cuda.get_device_name(0)}")
+        print(f"  Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+
+    curriculum.ensure_output_dirs()
+    config_path = os.path.join(curriculum.output_dir, "config.yaml")
+    curriculum.save_yaml(config_path)
+    print(f"Saved curriculum to {config_path}")
+
+    print("\nCreating model...")
+    model = create_model(base_config.model)
+    model = model.to(device)
+    param_counts = count_parameters(model)
+    print(f"  Total parameters: {param_counts['total']:,}")
+    print(f"  Trainable parameters: {param_counts['trainable']:,}")
+
+    print("\nConfiguring optimizer...")
+    optimizer = create_optimizer(model, base_config)
+    scheduler = create_scheduler(optimizer, base_config, total_epochs=total_epochs)
+    print(f"  Optimizer: AdamW")
+    print(f"  Learning rate: {base_config.training.learning_rate}")
+    print(f"  Scheduler: {base_config.training.lr_scheduler}")
+    print(f"  Total epochs (curriculum): {total_epochs}")
+
+    scaler = GradScaler('cuda') if base_config.training.use_amp and device.type == 'cuda' else None
+    if scaler:
+        print("  Mixed precision: Enabled")
+
+    logger = MetricsLogger(os.path.join(curriculum.output_dir, "logs"))
+
+    # Resume handling
+    start_global_epoch = 0
+    best_val_loss = float('inf')
+    start_stage_idx = 0
+    start_stage_epoch = 0
+
+    # Auto-detect latest checkpoint if no explicit resume path
+    if base_config.training.resume_checkpoint is None:
+        checkpoint_dir = os.path.join(curriculum.output_dir, "checkpoints")
+        if os.path.exists(checkpoint_dir):
+            checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith("epoch_") and f.endswith(".pt")]
+            if checkpoints:
+                checkpoints.sort()
+                latest = os.path.join(checkpoint_dir, checkpoints[-1])
+                print(f"Found existing checkpoint: {latest}")
+                base_config.training.resume_checkpoint = latest
+
+    if base_config.training.resume_checkpoint:
+        metadata = load_checkpoint(
+            base_config.training.resume_checkpoint,
+            model,
+            optimizer,
+            scheduler,
+            device
+        )
+        # 'epoch' is the global epoch index for curriculum runs.
+        start_global_epoch = int(metadata.get('epoch', 0)) + 1
+        best_val_loss = float(metadata.get('loss', float('inf')))
+
+        if 'stage_idx' in metadata and 'stage_epoch' in metadata:
+            start_stage_idx = int(metadata['stage_idx'])
+            start_stage_epoch = int(metadata['stage_epoch']) + 1
+        else:
+            inferred_stage_idx, inferred_stage_epoch, _ = _infer_curriculum_position(
+                curriculum, start_global_epoch
+            )
+            start_stage_idx = inferred_stage_idx
+            start_stage_epoch = inferred_stage_epoch
+
+    # Training loop across stages
+    print("\n" + "=" * 60)
+    print("Starting curriculum training...")
+    print("=" * 60)
+
+    training_start_time = time.time()
+
+    global_epoch = start_global_epoch
+    current_train_loader = None
+    current_val_loader = None
+    current_data_obj: Optional[Any] = None
+    current_loss_obj: Optional[Any] = None
+    criterion: Optional[nn.Module] = None
+
+    for stage_idx, stage_config in enumerate(curriculum.stages):
+        stage_epochs = int(stage_config.training.num_epochs)
+        if stage_epochs <= 0:
+            continue
+
+        # Skip fully-completed stages when resuming
+        if stage_idx < start_stage_idx:
+            continue
+
+        stage_epoch_start = start_stage_epoch if stage_idx == start_stage_idx else 0
+        if stage_epoch_start >= stage_epochs:
+            continue
+
+        # Refresh dataloaders only if data config changes
+        if current_data_obj is not stage_config.data or current_train_loader is None or current_val_loader is None:
+            print("\nPreparing datasets...")
+            current_train_loader, current_val_loader = get_dataloaders(stage_config)
+            current_data_obj = stage_config.data
+            print(f"Stage {stage_idx + 1}/{len(curriculum.stages)} dataset: {stage_config.data.dataset_name}")
+            print(f"Training samples: {len(current_train_loader.dataset)}")
+            print(f"Validation samples: {len(current_val_loader.dataset)}")
+            print(f"Batches per epoch: {len(current_train_loader)}")
+
+        # Refresh loss only if loss config changes
+        if current_loss_obj is not stage_config.loss or criterion is None:
+            print("\nSetting up loss functions...")
+            criterion = CombinedLoss(stage_config.loss).to(device)
+            current_loss_obj = stage_config.loss
+            print(f"  L1 weight: {stage_config.loss.l1_weight}")
+            print(f"  Perceptual weight: {stage_config.loss.perceptual_weight}")
+            print(f"  Style weight: {stage_config.loss.style_weight}")
+            print(f"  Histogram weight: {stage_config.loss.histogram_weight}")
+
+        # Sanity: if we've somehow reached the curriculum end, stop.
+        if global_epoch >= total_epochs:
+            break
+
+        for stage_epoch in range(stage_epoch_start, stage_epochs):
+            if global_epoch >= total_epochs:
+                break
+
+            epoch_start_time = time.time()
+
+            print(
+                f"\nEpoch {global_epoch + 1}/{total_epochs} "
+                f"(Stage {stage_idx + 1}/{len(curriculum.stages)}, "
+                f"stage epoch {stage_epoch + 1}/{stage_epochs})"
+            )
+            print("-" * 40)
+
+            train_losses = train_epoch(
+                model,
+                current_train_loader,
+                criterion,
+                optimizer,
+                device,
+                stage_config,
+                scaler,
+                logger,
+                global_epoch,
+            )
+
+            val_losses = validate(model, current_val_loader, criterion, device, stage_config)
+
+            if scheduler is not None:
+                if base_config.training.lr_scheduler == 'plateau':
+                    scheduler.step(val_losses['total'])
+                else:
+                    scheduler.step()
+
+            logger.end_epoch(global_epoch)
+
+            epoch_time = time.time() - epoch_start_time
+            print(f"\nEpoch {global_epoch + 1} Summary:")
+            print(f"  Train Loss: {train_losses['total']:.4f}")
+            print(f"  Val Loss: {val_losses['total']:.4f}")
+            print(f"  Learning Rate: {optimizer.param_groups[0]['lr']:.2e}")
+            print(f"  Time: {format_time(epoch_time)}")
+
+            checkpoint_extra = {
+                'global_epoch': global_epoch,
+                'stage_idx': stage_idx,
+                'stage_epoch': stage_epoch,
+            }
+
+            if val_losses['total'] < best_val_loss:
+                best_val_loss = val_losses['total']
+                checkpoint_path = os.path.join(curriculum.output_dir, "checkpoints", "best_model.pt")
+                save_checkpoint(
+                    model,
+                    optimizer,
+                    scheduler,
+                    global_epoch,
+                    val_losses['total'],
+                    stage_config,
+                    checkpoint_path,
+                    extra_metadata=checkpoint_extra,
+                )
+                print(f"  New best model saved! (Val Loss: {best_val_loss:.4f})")
+
+            if (global_epoch + 1) % base_config.training.save_every == 0:
+                checkpoint_path = os.path.join(
+                    curriculum.output_dir,
+                    "checkpoints",
+                    f"epoch_{global_epoch + 1:03d}.pt",
+                )
+                save_checkpoint(
+                    model,
+                    optimizer,
+                    scheduler,
+                    global_epoch,
+                    val_losses['total'],
+                    stage_config,
+                    checkpoint_path,
+                    extra_metadata=checkpoint_extra,
+                )
+
+            if (global_epoch + 1) % base_config.training.visualize_every == 0:
+                viz_path = os.path.join(
+                    curriculum.output_dir,
+                    "visualizations",
+                    f"epoch_{global_epoch + 1:03d}.png",
+                )
+                visualize_samples(
+                    model,
+                    current_val_loader,
+                    device,
+                    viz_path,
+                    num_samples=base_config.training.num_visualize_samples,
+                    epoch=global_epoch,
+                )
+                print(f"  Saved visualization to {viz_path}")
+
+            logger.save()
+            logger.plot_losses(os.path.join(curriculum.output_dir, "logs", "loss_curves.png"))
+
+            global_epoch += 1
+
+    total_time = time.time() - training_start_time
+    print("\n" + "=" * 60)
+    print("Training Complete!")
+    print("=" * 60)
+    print(f"Total training time: {format_time(total_time)}")
+    print(f"Best validation loss: {best_val_loss:.4f}")
+    print(f"Outputs saved to: {curriculum.output_dir}")
+
+
 def main():
     """Main entry point with command-line argument parsing."""
     parser = argparse.ArgumentParser(
@@ -671,31 +954,41 @@ def main():
     
     args = parser.parse_args()
     
-    # Get configuration, optionally from YAML
+    # Get curriculum, optionally from YAML
     if args.config:
-        config = Config.from_yaml(args.config)
+        curriculum = load_experiment_config(args.config)
     else:
-        config = get_config()
+        curriculum = get_curriculum()
+    #   curriculum = get_config()
     
-    # Apply command-line overrides
-    if args.resume:
-        config.training.resume_checkpoint = args.resume
-    if args.output:
-        config.training.output_dir = args.output
-    if args.epochs:
-        config.training.num_epochs = args.epochs
-    if args.batch_size:
-        config.training.batch_size = args.batch_size
-    if args.lr:
-        config.training.learning_rate = args.lr
-    if args.dataset:
-        config.data.dataset_name = args.dataset
+    # Apply command-line overrides, if any, and begin training based on Curriculum/Config
+    if isinstance(curriculum, Curriculum):
+        _apply_overrides_to_curriculum(curriculum, args)
+        if args.epochs is not None:
+            print("Warning: --epochs override is ignored for curriculum runs; edit stage num_epochs in the curriculum YAML instead.")
+        if args.dataset is not None:
+            print("Warning: --dataset override is ignored for curriculum runs; edit per-stage dataset_name in the curriculum YAML instead.")
 
-    # Ensure directories exist after any overrides
-    config.ensure_output_dirs()
-    
-    # Run training
-    train(config)
+        curriculum.ensure_output_dirs()
+        train_with_curriculum(curriculum)
+    else:
+        config = curriculum
+
+        if args.resume:
+            config.training.resume_checkpoint = args.resume
+        if args.output:
+            config.training.output_dir = args.output
+        if args.epochs:
+            config.training.num_epochs = args.epochs
+        if args.batch_size:
+            config.training.batch_size = args.batch_size
+        if args.lr:
+            config.training.learning_rate = args.lr
+        if args.dataset:
+            config.data.dataset_name = args.dataset
+
+        config.ensure_output_dirs()
+        train(config)
 
 
 if __name__ == "__main__":

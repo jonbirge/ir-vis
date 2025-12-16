@@ -63,6 +63,62 @@ class TestConfig(unittest.TestCase):
         # Check directories exist
         self.assertTrue(Path(config.training.output_dir).exists())
 
+    def test_curriculum_default_creation(self):
+        """Test that the default curriculum can be created and has expected structure."""
+        from config import get_curriculum, Curriculum
+
+        curriculum = get_curriculum()
+        self.assertIsInstance(curriculum, Curriculum)
+        self.assertEqual(len(curriculum.stages), 3)
+        self.assertEqual(curriculum.total_epochs, 300)
+
+        # Stage semantics from TODO.md
+        self.assertEqual(curriculum.stages[0].data.dataset_name, 'coco')
+        self.assertEqual(curriculum.stages[1].data.dataset_name, 'coco')
+        self.assertEqual(curriculum.stages[2].data.dataset_name, 'cityscapes')
+
+        self.assertEqual(curriculum.stages[0].training.num_epochs, 75)
+        self.assertEqual(curriculum.stages[1].training.num_epochs, 75)
+        self.assertEqual(curriculum.stages[2].training.num_epochs, 150)
+
+        self.assertEqual(curriculum.stages[0].loss.l1_weight, 0.0)
+        self.assertGreater(curriculum.stages[1].loss.l1_weight, 0.0)
+
+        # Object reuse: model and training should be shared across all stages
+        self.assertIs(curriculum.stages[0].model, curriculum.stages[1].model)
+        self.assertIs(curriculum.stages[1].model, curriculum.stages[2].model)
+        self.assertIs(curriculum.stages[0].training, curriculum.stages[1].training)
+        self.assertIsNot(curriculum.stages[1].training, curriculum.stages[2].training)
+
+    def test_curriculum_yaml_round_trip(self):
+        """Test curriculum save/load via load_experiment_config dispatcher."""
+        from config import get_curriculum, load_experiment_config, Curriculum
+
+        curriculum = get_curriculum()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'curriculum.yaml'
+            curriculum.save_yaml(path)
+            loaded = load_experiment_config(path)
+
+            self.assertIsInstance(loaded, Curriculum)
+            self.assertEqual(len(loaded.stages), 3)
+            self.assertEqual(loaded.total_epochs, 300)
+
+    def test_config_copy_reuses_sections(self):
+        """Test Config.copy defaults to reusing unchanged section objects."""
+        from config import get_config
+
+        cfg = get_config()
+        cfg2 = cfg.copy(loss={'l1_weight': 0.0})
+
+        # Changed section is new, unchanged sections reused
+        self.assertIs(cfg2.data, cfg.data)
+        self.assertIs(cfg2.model, cfg.model)
+        self.assertIs(cfg2.training, cfg.training)
+        self.assertIsNot(cfg2.loss, cfg.loss)
+        self.assertEqual(cfg2.loss.l1_weight, 0.0)
+
 
 class TestModel(unittest.TestCase):
     """Tests for model architecture."""

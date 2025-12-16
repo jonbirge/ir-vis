@@ -1,18 +1,36 @@
 """
-Configuration file for IR-to-Color Image Translation Network
-
-This module contains all hyperparameters and configuration settings for the
-reference-based colorization network. The architecture is designed to take
-an IR image (simulated from the red channel of a cropped visible image) and
-a reference visible image, producing a colorized version of the IR image.
-
-The design philosophy here is to separate configuration from code, making it
-easy to experiment with different hyperparameters without modifying the
-training logic.
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ IR-to-Color Image Translation Network — Configuration                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Purpose:                                                                    │
+│   Centralized configuration for the reference-based IR→Color colorization   │
+│   pipeline. This module defines dataclasses that encapsulate dataset,       │
+│   model, loss, and training hyperparameters so experiments are reproducible │
+│   and easy to modify without touching training logic.                       │
+│                                                                             │
+│ Key Features:                                                               │
+│   - Typed dataclasses for Data, Model, Loss, and Training settings.         │
+│   - Convenience helpers: to_dict, from_dict, save_yaml, from_yaml.          │
+│   - Ensures output directories exist for checkpoints, logs, and visuals.    │
+│   - Reasonable defaults for quick experiments and clear knobs for tuning.   │
+│                                                                             │
+│ Typical Usage:                                                              │
+│   from config import get_config, Config                                     │
+│   cfg = get_config()                                                        │
+│   # or load from YAML                                                       │
+│   cfg = Config.from_yaml('my_run/config.yaml')                              │
+│                                                                             │
+│ Notes & Caveats:                                                            │
+│   - This file is purely declarative: training logic uses these values but   │
+│     does not hard-code them.                                                │
+│   - When saving YAML, nested dataclasses are flattened via asdict().        │
+│   - ensure_output_dirs() is called on initialization to avoid surprises     │
+│     when training attempts to write files.                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
 """
 
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
@@ -69,9 +87,9 @@ class DataConfig:
     
     # Geometric augmentation parameters (applied before cropping)
     random_rotation: bool = True
-    max_rotation_angle: float = 15.0  # degrees
+    max_rotation_angle: float = 90.0  # degrees
     random_perspective: bool = True
-    perspective_distortion: float = 0.1  # 0.0 to 0.5, higher = more distortion
+    perspective_distortion: float = 0.2  # 0.0 to 0.5, higher = more distortion
     
     # IR simulation parameters
     # Enable advanced IR simulation (channel subtraction + noise)
@@ -89,6 +107,10 @@ class DataConfig:
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
     max_train_samples: Optional[int] = 32000
+
+    def copy(self, **overrides: Any) -> "DataConfig":
+        """Return a copy of this config, applying any field overrides."""
+        return replace(self, **overrides)
 
 
 @dataclass
@@ -135,6 +157,10 @@ class ModelConfig:
     use_instance_norm: bool = True
     output_channels: int = 3
 
+    def copy(self, **overrides: Any) -> "ModelConfig":
+        """Return a copy of this config, applying any field overrides."""
+        return replace(self, **overrides)
+
 
 @dataclass
 class LossConfig:
@@ -178,6 +204,10 @@ class LossConfig:
         'relu1_2', 'relu2_2', 'relu3_4', 'relu4_4'
     ])
 
+    def copy(self, **overrides: Any) -> "LossConfig":
+        """Return a copy of this config, applying any field overrides."""
+        return replace(self, **overrides)
+
 
 @dataclass
 class TrainingConfig:
@@ -195,7 +225,7 @@ class TrainingConfig:
     batch_size: int = 12 # 10-12 seems to work well with 12 GB VRAM
     
     # Number of training epochs
-    num_epochs: int = 150
+    num_epochs: int = 350
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
@@ -247,6 +277,10 @@ class TrainingConfig:
     # Device: 'cuda', 'cpu', or specific GPU like 'cuda:0'
     device: str = "cuda"
 
+    def copy(self, **overrides: Any) -> "TrainingConfig":
+        """Return a copy of this config, applying any field overrides."""
+        return replace(self, **overrides)
+
 
 @dataclass
 class Config:
@@ -281,6 +315,36 @@ class Config:
         """Serialize the configuration making all nested dataclasses plain dicts."""
         return asdict(self)
 
+    def copy(
+        self,
+        *,
+        data: Optional[Union[DataConfig, Mapping[str, Any]]] = None,
+        model: Optional[Union[ModelConfig, Mapping[str, Any]]] = None,
+        loss: Optional[Union[LossConfig, Mapping[str, Any]]] = None,
+        training: Optional[Union[TrainingConfig, Mapping[str, Any]]] = None,
+    ) -> "Config":
+        """Copy this Config, reusing unchanged sub-objects by default.
+
+        Passing a section as a dict applies overrides via that section's copy().
+        Passing a section as an instance replaces the section.
+        Passing None reuses the existing section object.
+        """
+
+        def _maybe_copy_section(current: Any, patch: Optional[Union[Any, Mapping[str, Any]]]) -> Any:
+            if patch is None:
+                return current
+            if isinstance(patch, Mapping):
+                # All sub-configs implement .copy(**overrides)
+                return current.copy(**dict(patch))
+            return patch
+
+        return Config(
+            data=_maybe_copy_section(self.data, data),
+            model=_maybe_copy_section(self.model, model),
+            loss=_maybe_copy_section(self.loss, loss),
+            training=_maybe_copy_section(self.training, training),
+        )
+
     def save_yaml(self, path: Union[str, Path]) -> None:
         """Persist the configuration as YAML to the provided path."""
         destination = Path(path)
@@ -314,6 +378,114 @@ class Config:
         if raw is None:
             raw = {}
         return cls.from_dict(raw)
+
+
+@dataclass
+class Curriculum:
+    """An ordered list of Config stages for curriculum learning.
+
+    Each stage's training.num_epochs is interpreted as the number of epochs to
+    run for that stage. The total epochs for the curriculum is the sum of all
+    stage num_epochs.
+    """
+
+    stages: List[Config]
+
+    def __post_init__(self) -> None:
+        if not self.stages:
+            raise ValueError("Curriculum must contain at least one Config stage")
+
+        # Enforce single output directory per run (user preference).
+        out_dir = self.stages[0].training.output_dir
+        for stage in self.stages[1:]:
+            if stage.training.output_dir != out_dir:
+                raise ValueError(
+                    "All curriculum stages must share the same training.output_dir"
+                )
+
+    @property
+    def total_epochs(self) -> int:
+        return int(sum(stage.training.num_epochs for stage in self.stages))
+
+    @property
+    def output_dir(self) -> str:
+        return self.stages[0].training.output_dir
+
+    def ensure_output_dirs(self) -> None:
+        # Ensure the shared output directory exists.
+        self.stages[0].ensure_output_dirs()
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"curriculum": [stage.to_dict() for stage in self.stages]}
+
+    def save_yaml(self, path: Union[str, Path]) -> None:
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("w", encoding="utf-8") as stream:
+            yaml.safe_dump(self.to_dict(), stream, sort_keys=False)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "Curriculum":
+        raw_stages = data.get("curriculum")
+        if raw_stages is None:
+            raw_stages = data.get("stages")
+        if not isinstance(raw_stages, list):
+            raise ValueError("Curriculum YAML must contain a 'curriculum' list")
+        stages = [Config.from_dict(stage_dict or {}) for stage_dict in raw_stages]
+        return cls(stages=stages)
+
+    @classmethod
+    def from_yaml(cls, path: Union[str, Path]) -> "Curriculum":
+        source = Path(path)
+        with source.open("r", encoding="utf-8") as stream:
+            raw = yaml.safe_load(stream)
+        if raw is None:
+            raw = {}
+        return cls.from_dict(raw)
+
+
+def load_experiment_config(path: Union[str, Path]) -> Union[Config, Curriculum]:
+    """Load either a single Config or a Curriculum from YAML."""
+    source = Path(path)
+    with source.open("r", encoding="utf-8") as stream:
+        raw = yaml.safe_load(stream)
+    if raw is None:
+        raw = {}
+
+    if isinstance(raw, Mapping) and "curriculum" in raw:
+        return Curriculum.from_dict(raw)
+    return Config.from_dict(raw if isinstance(raw, Mapping) else {})
+
+
+def get_curriculum() -> Curriculum:
+    """Create the default 3-stage curriculum:
+      1) 75 epochs, perceptual/style/histogram only, COCO
+      2) 75 epochs, full loss including L1, COCO
+      3) 150 epochs, full loss, Cityscapes
+    """
+
+    base = get_config()
+
+    # Shared training section across all stages
+    shared_training_75 = base.training.copy(num_epochs=75, resume_checkpoint=None)
+    shared_training_150 = shared_training_75.copy(num_epochs=150)
+
+    # Shared model across all stages
+    shared_model = base.model
+
+    # Dataset sections
+    data_coco = base.data.copy(dataset_name="coco")
+    data_cityscapes = base.data.copy(dataset_name="cityscapes")
+
+    # Loss sections
+    loss_no_l1 = base.loss.copy(l1_weight=0.0)
+    loss_full = base.loss
+
+    stage1 = Config(data=data_coco, model=shared_model, loss=loss_no_l1, training=shared_training_75)
+    stage2 = Config(data=data_coco, model=shared_model, loss=loss_full, training=shared_training_75)
+    stage3 = Config(data=data_cityscapes, model=shared_model, loss=loss_full, training=shared_training_150)
+
+    return Curriculum(stages=[stage1, stage2, stage3])
 
 
 def get_config() -> Config:
