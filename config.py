@@ -41,7 +41,7 @@ class DataConfig:
     # Cityscapes is recommended for urban/outdoor scenes with consistent quality
     # Note: Cityscapes requires manual download after free registration at:
     #       https://www.cityscapes-dataset.com/
-    dataset_name: str = "coco"
+    dataset_name: str = "cityscapes"
     
     # Image dimensions for network input
     # IR image size (the image we want to colorize)
@@ -80,7 +80,7 @@ class DataConfig:
     
     # Maximum weight for channel subtraction when simulating IR
     # IR = R - random(0, max_channel_subtract) * (G + B)
-    max_channel_subtract: float = 0.5
+    max_channel_subtract: float = 0.2
     
     # Maximum pixel noise standard deviation for simulated IR (0-255 scale)
     # Actual noise std is randomly selected from [0, ir_noise_std] per image
@@ -156,16 +156,16 @@ class LossConfig:
     
     # Perceptual loss weight (VGG feature matching)
     # Higher values produce sharper, more detailed results but may introduce artifacts
-    perceptual_weight: float = 0.0
+    perceptual_weight: float = 10.0
     
     # Style loss weight (Gram matrix matching)
     # Helps transfer color statistics from reference
     # Note: Reduced from 50.0 to 10.0 for numerical stability
-    style_weight: float = 0.0
+    style_weight: float = 10.0
     
     # Color histogram loss weight
     # Encourages the output to have similar color distribution to ground truth
-    histogram_weight: float = 10.0
+    histogram_weight: float = 1.0
     
     # VGG layers to use for perceptual loss
     # Earlier layers capture low-level features; later layers capture semantics
@@ -192,14 +192,14 @@ class TrainingConfig:
     # RTX 3090 (24GB): batch_size=16 should work
     # RTX 4090 (24GB): batch_size=16-20
     # A100 (40GB): batch_size=32
-    batch_size: int = 32 # 10-12 seems to work well with 12 GB VRAM
+    batch_size: int = 12 # 10-12 seems to work well with 12 GB VRAM
     
     # Number of training epochs
-    num_epochs: int = 100
+    num_epochs: int = 150
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
-    learning_rate: float = 2e-4
+    learning_rate: float = 1e-4
     
     # Weight decay for regularization
     weight_decay: float = 1e-5
@@ -222,7 +222,7 @@ class TrainingConfig:
     save_every: int = 5
     
     # How often to log training metrics (in iterations)
-    log_every: int = 50
+    log_every: int = 100
     
     # How often to save sample visualizations (in epochs)
     visualize_every: int = 1
@@ -319,8 +319,6 @@ class Config:
 def get_config() -> Config:
     """
     Factory function to get the default configuration.
-    
-    TODO: can be extended to support loading from YAML/JSON files.
     
     Returns:
         Config: The complete configuration object

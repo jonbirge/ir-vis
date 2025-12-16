@@ -1,12 +1,36 @@
 """
-Utility functions for IR-to-Color Image Translation
-
-This module provides helper functions for:
-- Checkpoint saving and loading
-- Visualization of results
-- Logging and metrics tracking
-- Image format conversions
-- Random seed management for reproducibility
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ IR-to-Color Image Translation Utilities                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Purpose: Provide reusable helpers for model training, evaluation,           │
+│          visualization, and experiment reproducibility when working with    │
+│          infrared (IR) to color image translation tasks.                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Key Features:                                                               │
+│  - Checkpointing: save/load model weights, optimizer/scheduler state, and   │
+│    training metadata to resume experiments.                                 │
+│  - Visualization: utilities to denormalize tensors and save comparison      │
+│    images (single and batch) for IR input, color reference, model output,   │
+│    and ground truth.                                                        │
+│  - Metrics logging: per-iteration captures, epoch aggregation, JSON export, │
+│    and plotting helpers for common loss terms.                              │
+│  - Utilities: deterministic seed setting, tensor<->NumPy image conversion,  │
+│    parameter counting, and human-friendly time formatting.                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Usage:                                                                      │
+│  Import and call the helpers from training or evaluation scripts. Typical   │
+│  workflow: set_seed(...) for reproducibility, save_checkpoint(...) during   │
+│  training, periodically visualize outputs with save_comparison_image or     │
+│  save_batch_visualization, and persist metrics via MetricsLogger.           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Notes & Caveats:                                                            │
+│  - Visualizations assume ImageNet-style normalization by default and that   │
+│    model predictions are in [-1, 1] (converted to [0, 1] internally).       │
+│  - load_checkpoint may use torch.load(..., weights_only=False) which can    │
+│    deserialize arbitrary Python objects—only load trusted checkpoint files. │
+│  - Deterministic settings for CUDA (cudnn.deterministic) may reduce         │
+│    performance; enable only when reproducibility is critical.               │
+└─────────────────────────────────────────────────────────────────────────────┘
 """
 
 import os

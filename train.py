@@ -17,8 +17,7 @@ This script handles the complete training pipeline:
 Usage:
     python train.py
 
-The script uses configuration from config.py. To modify hyperparameters,
-edit that file or extend this script with command-line argument parsing.
+The script uses configuration from config.py.
 """
 
 import os
@@ -185,7 +184,7 @@ def train_epoch(
     loss_components = {}
     num_batches = 0
     
-    # Progress bar
+    # Progress bar iterator
     pbar = tqdm(
         train_loader, 
         desc=f"Epoch {epoch + 1} [Train]",

@@ -1,5 +1,9 @@
 # IR-VIS
 
+- Curriculum learning
+    - 75 epochs on perception, style and histogram losses only, coco
+    - 75 epochs on full loss, including L1, coco
+    - 75 epochs on full loss, cityscapes
 - Train on multiple resolutions?
 - Train on different resolutions between IR and VIS?
 - Expand to curriculum learning model
