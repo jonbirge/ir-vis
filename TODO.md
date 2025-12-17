@@ -1,12 +1,8 @@
 # IR-VIS
 
-- Curriculum learning
-    - 75 epochs using perception, style and histogram losses only, coco dataset
-    - 75 epochs on full loss, including L1, coco dataset
-    - 75 epochs on full loss, cityscapes dataset
 - More elegant solution to curriculum learning
-    - Single train(config, start_epoch) function to replace train()
-    - train_curriculum() just repeatedly calls train()
+    - Modify train(config, start_epoch) function to replace train() for handling training from checkpoints
+    - train_curriculum() just repeatedly calls train(stage_config, start_epoch) for each stage
     - Curriculum object method that can return proper config given an epoch
 - Train on multiple resolutions?
 - Train on different resolutions between IR and VIS?

@@ -10,21 +10,27 @@
 │                                                                             │
 │ Key Features:                                                               │
 │   - Typed dataclasses for Data, Model, Loss, and Training settings.         │
-│   - Convenience helpers: to_dict, from_dict, save_yaml, from_yaml.          │
+│   - Curriculum support: an ordered list of Config stages (Curriculum)       │
+│     with helpers to serialize/deserialize curriculum YAML and enforce a     │
+│     shared output directory across stages.                                  │
+│   - Convenience helpers: to_dict, from_dict, save_yaml, from_yaml, and      │
+│     load_experiment_config (supports either a Config or a Curriculum)       │
+│   - Default 3-stage curriculum factory (get_curriculum) for common runs.    │
 │   - Ensures output directories exist for checkpoints, logs, and visuals.    │
 │   - Reasonable defaults for quick experiments and clear knobs for tuning.   │
 │                                                                             │
 │ Typical Usage:                                                              │
-│   from config import get_config, Config                                     │
+│   from config import get_config, Config, Curriculum                         │
 │   cfg = get_config()                                                        │
-│   # or load from YAML                                                       │
-│   cfg = Config.from_yaml('my_run/config.yaml')                              │
+│   # or load from YAML (single config or curriculum YAML supported)          │
+│   cfg_or_curr = load_experiment_config('my_run/config_or_curriculum.yaml')  │
 │                                                                             │
 │ Notes & Caveats:                                                            │
 │   - This file is purely declarative: training logic uses these values but   │
 │     does not hard-code them.                                                │
 │   - When saving YAML, nested dataclasses are flattened via asdict().        │
-│   - ensure_output_dirs() is called on initialization to avoid surprises     │
+│   - Curriculum enforces a single shared training.output_dir across stages;  │
+│     ensure_output_dirs() is called on initialization to avoid surprises     │
 │     when training attempts to write files.                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 """
@@ -459,7 +465,7 @@ def load_experiment_config(path: Union[str, Path]) -> Union[Config, Curriculum]:
 
 def get_curriculum() -> Curriculum:
     """Create the default 3-stage curriculum:
-      1) 75 epochs, perceptual/style/histogram only, COCO
+      1) 50 epochs, perceptual/style/histogram only, COCO
       2) 75 epochs, full loss including L1, COCO
       3) 150 epochs, full loss, Cityscapes
     """
@@ -467,8 +473,9 @@ def get_curriculum() -> Curriculum:
     base = get_config()
 
     # Shared training section across all stages
-    shared_training_75 = base.training.copy(num_epochs=75, resume_checkpoint=None)
-    shared_training_150 = shared_training_75.copy(num_epochs=150)
+    training_50 = base.training.copy(num_epochs=50)
+    training_75 = base.training.copy(num_epochs=75)
+    training_150 = base.training.copy(num_epochs=150)
 
     # Shared model across all stages
     shared_model = base.model
@@ -481,9 +488,9 @@ def get_curriculum() -> Curriculum:
     loss_no_l1 = base.loss.copy(l1_weight=0.0)
     loss_full = base.loss
 
-    stage1 = Config(data=data_coco, model=shared_model, loss=loss_no_l1, training=shared_training_75)
-    stage2 = Config(data=data_coco, model=shared_model, loss=loss_full, training=shared_training_75)
-    stage3 = Config(data=data_cityscapes, model=shared_model, loss=loss_full, training=shared_training_150)
+    stage1 = Config(data=data_coco, model=shared_model, loss=loss_no_l1, training=training_50)
+    stage2 = Config(data=data_coco, model=shared_model, loss=loss_full, training=training_75)
+    stage3 = Config(data=data_cityscapes, model=shared_model, loss=loss_full, training=training_150)
 
     return Curriculum(stages=[stage1, stage2, stage3])
 
@@ -501,5 +508,5 @@ def get_config() -> Config:
 # Quick sanity check when module is run directly
 if __name__ == "__main__":
     # Reflectively serialize the full default configuration and pretty-print it.
-    config = get_config()
-    print(yaml.safe_dump(config.to_dict(), sort_keys=False, allow_unicode=True))
+    curriculum = get_curriculum()
+    print(yaml.safe_dump(curriculum.to_dict(), sort_keys=False, allow_unicode=True))
