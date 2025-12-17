@@ -65,7 +65,7 @@ class DataConfig:
     # Cityscapes is recommended for urban/outdoor scenes with consistent quality
     # Note: Cityscapes requires manual download after free registration at:
     #       https://www.cityscapes-dataset.com/
-    dataset_name: str = "cityscapes"
+    dataset_name: str = "coco"
     
     # Image dimensions for network input
     # IR image size (the image we want to colorize)
@@ -112,7 +112,11 @@ class DataConfig:
     
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
-    max_train_samples: Optional[int] = 32000
+    max_train_samples: Optional[int] = 512
+    
+    # Maximum number of validation samples to use (None = use all)
+    # Useful for faster validation during training
+    max_validation_samples: Optional[int] = 128
 
     def copy(self, **overrides: Any) -> "DataConfig":
         """Return a copy of this config, applying any field overrides."""
@@ -225,13 +229,10 @@ class TrainingConfig:
     """
     
     # Batch size - adjust based on GPU memory
-    # RTX 3090 (24GB): batch_size=16 should work
-    # RTX 4090 (24GB): batch_size=16-20
-    # A100 (40GB): batch_size=32
-    batch_size: int = 12 # 10-12 seems to work well with 12 GB VRAM
+    batch_size: int = 8  # 8 seems to work well with 12 GB VRAM
     
     # Number of training epochs
-    num_epochs: int = 350
+    num_epochs: int = 100
     
     # Learning rate
     # 1e-4 is a good starting point for Adam with pretrained features
@@ -448,6 +449,35 @@ class Curriculum:
         if raw is None:
             raw = {}
         return cls.from_dict(raw)
+
+    def get_config_for_epoch(self, global_epoch: int) -> Tuple[Config, int, int]:
+        """Get the config stage for a given global epoch.
+        
+        Args:
+            global_epoch: The global epoch number (0-indexed)
+            
+        Returns:
+            Tuple of (config, stage_idx, stage_epoch) where:
+            - config: The Config for the stage containing this global epoch
+            - stage_idx: The index of the stage (0-indexed)
+            - stage_epoch: The epoch within that stage (0-indexed)
+        """
+        if global_epoch < 0:
+            return self.stages[0], 0, 0
+            
+        cumulative = 0
+        for stage_idx, stage in enumerate(self.stages):
+            stage_epochs = int(stage.training.num_epochs)
+            if global_epoch < cumulative + stage_epochs:
+                stage_epoch = global_epoch - cumulative
+                return stage, stage_idx, stage_epoch
+            cumulative += stage_epochs
+        
+        # Beyond curriculum end - return last stage
+        last_idx = len(self.stages) - 1
+        last_stage = self.stages[last_idx]
+        last_epoch = int(last_stage.training.num_epochs) - 1
+        return last_stage, last_idx, last_epoch
 
 
 def load_experiment_config(path: Union[str, Path]) -> Union[Config, Curriculum]:

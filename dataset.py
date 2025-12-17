@@ -818,7 +818,8 @@ def get_dataloaders(config: Config) -> Tuple[DataLoader, DataLoader]:
         val_dataset = IRColorPairDataset(
             image_source=val_paths,
             config=data_config,
-            is_training=False
+            is_training=False,
+            max_samples=data_config.max_validation_samples
         )
         
     elif dataset_name == "coco":
@@ -838,7 +839,8 @@ def get_dataloaders(config: Config) -> Tuple[DataLoader, DataLoader]:
         val_dataset = IRColorPairDataset(
             image_source=str(val_dir),
             config=data_config,
-            is_training=False
+            is_training=False,
+            max_samples=data_config.max_validation_samples
         )
     
     else:
