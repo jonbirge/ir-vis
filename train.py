@@ -680,23 +680,6 @@ def train(
     return last_completed_epoch
 
 
-def _infer_curriculum_position(curriculum: Curriculum, global_epoch: int) -> Tuple[int, int, int]:
-    """Infer (stage_idx, stage_epoch, global_epoch) given a global epoch index."""
-    if global_epoch < 0:
-        return 0, 0, 0
-
-    remaining = global_epoch
-    for stage_idx, stage in enumerate(curriculum.stages):
-        stage_len = int(stage.training.num_epochs)
-        if remaining < stage_len:
-            return stage_idx, remaining, global_epoch
-        remaining -= stage_len
-
-    # If we're beyond the end (e.g., resume after completion), clamp to last stage end.
-    last_idx = len(curriculum.stages) - 1
-    return last_idx, int(curriculum.stages[last_idx].training.num_epochs), global_epoch
-
-
 def _apply_overrides_to_curriculum(curriculum: Curriculum, args: argparse.Namespace) -> None:
     """Apply safe CLI overrides to all stages of a curriculum (in-place)."""
     if args.output:
