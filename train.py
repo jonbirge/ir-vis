@@ -466,6 +466,7 @@ def train(
         config: Configuration object
         start_epoch: Global epoch to start from (default: 0)
         end_epoch: Global epoch to end at (default: config.training.num_epochs)
+        stage_idx: Optional stage index for curriculum training (affects config filename)
         
     Returns:
         Last completed global epoch number
@@ -487,7 +488,11 @@ def train(
     
     # Persist the active configuration so each run records its settings
     config.ensure_output_dirs()
-    config_path = os.path.join(config.training.output_dir, "config.yaml")
+    if stage_idx is not None:
+        config_filename = f"config_stage_{stage_idx + 1}.yaml"
+    else:
+        config_filename = "config.yaml"
+    config_path = os.path.join(config.training.output_dir, config_filename)
     config.save_yaml(config_path)
     print(f"Saved configuration to {config_path}")
     
@@ -719,19 +724,14 @@ def train_with_curriculum(curriculum: Curriculum) -> None:
     base_config = curriculum.stages[0]
     total_epochs = curriculum.total_epochs
     
-    set_seed(base_config.training.seed)
-    print(f"\nRandom seed: {base_config.training.seed}")
+    # set_seed(base_config.training.seed)
+    # print(f"\nRandom seed: {base_config.training.seed}")
     
-    device = torch.device(base_config.training.device if torch.cuda.is_available() else 'cpu')
-    print(f"Device: {device}")
-    if device.type == 'cuda':
-        print(f"  GPU: {torch.cuda.get_device_name(0)}")
-        print(f"  Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    
+    # Ensure output directories exist and save full curriculum YAML
     curriculum.ensure_output_dirs()
-    config_path = os.path.join(curriculum.output_dir, "config.yaml")
-    curriculum.save_yaml(config_path)
-    print(f"Saved curriculum to {config_path}")
+    curriculum_path = os.path.join(curriculum.output_dir, "curriculum.yaml")
+    curriculum.save_yaml(curriculum_path)
+    print(f"Saved curriculum to {curriculum_path}")
     
     # Determine starting point (resume if checkpoint exists)
     start_global_epoch = 0
