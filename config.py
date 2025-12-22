@@ -110,13 +110,19 @@ class DataConfig:
     # Actual noise std is randomly selected from [0, ir_noise_std] per image
     ir_noise_std: float = 10.0
     
+    # Black-hot IR simulation
+    # If True, inverts the grayscale IR image (255 - value) to simulate
+    # black-hot IR sensors where hot objects appear dark
+    # If False, uses white-hot convention (hot objects appear bright)
+    black_hot: bool = True
+    
     # Maximum number of training samples to use (None = use all)
     # Useful for debugging or quick experiments with smaller subsets
-    max_train_samples: Optional[int] = 512
+    max_train_samples: Optional[int] = 10000
     
     # Maximum number of validation samples to use (None = use all)
     # Useful for faster validation during training
-    max_validation_samples: Optional[int] = 128
+    max_validation_samples: Optional[int] = 500
 
     def copy(self, **overrides: Any) -> "DataConfig":
         """Return a copy of this config, applying any field overrides."""

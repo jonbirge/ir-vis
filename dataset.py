@@ -1,25 +1,58 @@
 """
-Dataset module for IR-to-Color Image Translation
+╔══════════════════════════════════════════════════════════════════════════╗
+║                  IR-to-Color Image Translation — Dataset                 ║
+╠══════════════════════════════════════════════════════════════════════════╣
+║ This module handles dataset preparation for IR-to-color translation      ║
+║ including data downloads, simulated IR/color pair generation, and        ║
+║ augmentation/preprocessing pipelines.                                    ║
+╚══════════════════════════════════════════════════════════════════════════╝
 
-This module handles:
-1. Downloading the COCO dataset (or other supported datasets)
-2. Creating simulated IR/visible image pairs for training
-3. Data augmentation and preprocessing
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Overview                                                                   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ The training data is synthesized by taking a color image, selecting a      │
+│ random crop to simulate the IR sensor field-of-view, deriving a grayscale  │
+│ IR-like image from the crop (typically using the red channel plus optional │
+│ augmentations), and using the cropped color region as the ground-truth     │
+│ target while the full/resized image serves as a color reference.           │
+└────────────────────────────────────────────────────────────────────────────┘
 
-The key insight for training data generation:
-- Real IR images capture thermal radiation, which correlates with but differs from
-  visible red channel. The red channel approximation works because:
-  - Many natural materials have similar relative reflectance in red and near-IR
-  - Vegetation, in particular, shows this correlation (red edge effect)
-  - For a first approximation, this gives reasonable training signal
-  
-- To simulate perspective/FOV differences, we take a random crop of the original
-  image as the "IR" view, while using the full image as the color reference.
-  This forces the network to learn robust feature matching across viewpoints.
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Key Insights                                                               │
+├─────────┬──────────────────────────────────────────────────────────────────┤
+│ Reason  │ Explanation                                                      │
+├─────────┼──────────────────────────────────────────────────────────────────┤
+│ Red vs  │ The red visible channel correlates with near-IR reflectance for  │
+│ Near-IR │ many materials (e.g., vegetation "red edge"), providing a useful │
+│         │ approximation for initial training signals.                      │
+├─────────┼──────────────────────────────────────────────────────────────────┤
+│ Crop    │ Using a crop as the IR view and the full image as reference      │
+│ Strategy│ simulates FOV/perspective mismatch, encouraging robust feature   │
+│         │ matching across viewpoints.                                      │
+├─────────┼──────────────────────────────────────────────────────────────────┤
+│ Augment │ Channel subtraction, noise, inversion, geometric warps, and      │
+│ Recipe  │ color jitter increase realism and model robustness.              │
+└─────────┴──────────────────────────────────────────────────────────────────┘
 
-Supported datasets:
-- Cityscapes: European urban street scenes (requires free registration)
-- COCO: Diverse outdoor scenes (auto-downloads)
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Supported Datasets                                                         │
+├──────────────┬─────────────────────────────────────────────────────────────┤
+│ cityscapes   │ European urban street scenes (requires registration to      │
+│              │ download).                                                  │
+├──────────────┼─────────────────────────────────────────────────────────────┤
+│ coco         │ COCO 2017 (train/val). Auto-downloadable; diverse outdoor   │
+│              │ scenes.                                                     │
+└──────────────┴─────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Module Responsibilities                                                    │
+├────────────────────────────────────────────────────────────────────────────┤
+│ - Download datasets (COCO automatic; Cityscapes helpers + instructions).   │
+│ - Build IR/color training pairs via deterministic/randomized pipelines.    │
+│ - Provide augmentation: color jitter, geometric transforms, noise, channel │
+│   manipulation, and optional inversion (black-hot / white-hot).            │
+│ - Expose DataLoader-ready Dataset objects for training and validation.     │
+└────────────────────────────────────────────────────────────────────────────┘
 """
 
 import os
@@ -592,14 +625,16 @@ class IRColorPairDataset(Dataset):
     def _simulate_ir_from_crop(self, crop: Image.Image) -> Image.Image:
         """
         Create a simulated IR image from a color crop.
+        - Uses red channel as base
+        - Optionally inverts for black-hot simulation
         
-        If use_ir_augmentation is enabled:
-            - Uses red channel as base
+        If use_ir_augmentation is enabled: 
             - Subtracts random amounts of green/blue channels
             - Renormalizes to [0, 255]
         
         If use_ir_augmentation is disabled:
             - Simple red channel extraction (legacy behavior)
+            - Optionally inverts for black-hot simulation
         
         Note: Noise is added later in __getitem__ after downsampling.
         
@@ -642,6 +677,11 @@ class IRColorPairDataset(Dataset):
         else:
             # Simple red channel extraction (legacy behavior)
             ir_channel = red.astype(np.uint8)
+        
+        # Apply black-hot inversion if configured
+        # This simulates IR sensors where hot objects appear dark
+        if self.config.black_hot:
+            ir_channel = 255 - ir_channel
         
         # Convert to PIL grayscale image
         ir_image = Image.fromarray(ir_channel, mode='L')
