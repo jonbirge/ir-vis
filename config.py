@@ -501,9 +501,9 @@ def load_experiment_config(path: Union[str, Path]) -> Union[Config, Curriculum]:
 
 def get_curriculum() -> Curriculum:
     """Create the default 3-stage curriculum:
-      1) 50 epochs, perceptual/style/histogram only, COCO
-      2) 75 epochs, full loss including L1, COCO
-      3) 150 epochs, full loss, Cityscapes
+      1) 50 epochs, perceptual/style/histogram only, COCO, 1/3 geometric augmentation
+      2) 75 epochs, full loss including L1, COCO, 2/3 geometric augmentation
+      3) 150 epochs, full loss, Cityscapes, full geometric augmentation
     """
 
     base = get_config()
@@ -516,16 +516,25 @@ def get_curriculum() -> Curriculum:
     # Shared model across all stages
     shared_model = base.model
 
-    # Dataset sections
-    data_coco = base.data.copy(dataset_name="coco")
+    # Dataset sections with progressive geometric augmentation
+    data_coco_stage1 = base.data.copy(
+        dataset_name="coco",
+        max_rotation_angle=20.0,
+        perspective_distortion=0.067
+    )
+    data_coco_stage2 = base.data.copy(
+        dataset_name="coco",
+        max_rotation_angle=60.0,
+        perspective_distortion=0.133
+    )
     data_cityscapes = base.data.copy(dataset_name="cityscapes")
 
     # Loss sections
     loss_no_l1 = base.loss.copy(l1_weight=0.0)
     loss_full = base.loss
 
-    stage1 = Config(data=data_coco, model=shared_model, loss=loss_no_l1, training=training_50)
-    stage2 = Config(data=data_coco, model=shared_model, loss=loss_full, training=training_75)
+    stage1 = Config(data=data_coco_stage1, model=shared_model, loss=loss_no_l1, training=training_50)
+    stage2 = Config(data=data_coco_stage2, model=shared_model, loss=loss_full, training=training_75)
     stage3 = Config(data=data_cityscapes, model=shared_model, loss=loss_full, training=training_150)
 
     return Curriculum(stages=[stage1, stage2, stage3])
