@@ -11,14 +11,6 @@ This project implements a deep learning approach to colorize IR images by levera
 - **U-Net style decoder**: With skip connections to preserve fine structural details
 - **Multi-component loss**: Combining L1, perceptual, style, and histogram losses for high-quality results
 
-### Key Features
-
-- Handles **different fields of view** between IR and reference images
-- Uses **pretrained features** for faster convergence and better generalization
-- **Mixed precision training** support for faster training on modern GPUs
-- Automatic **COCO dataset download** for training
-- Comprehensive **visualization and logging**
-
 ## Architecture
 
 ```
