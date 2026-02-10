@@ -1,6 +1,6 @@
 # IR-to-Color Image Translation Network
 
-A PyTorch implementation of a reference-based colorization network for translating infrared (IR) images to color using a visible-light reference image from a different viewpoint/time.
+A PyTorch implementation of a reference-based colorization network for translating infrared (IR) images to higher resolution and color using a visible-light (VIS) reference image from a different viewpoint/time. An attention mechanism between the IR image and the reference VIS image is used to inform the output image and avoid halucination. While it doesn't always work great, it appears to "fail well" in that if it doesn't work it just fails to improve the IR image rather than imagining things that aren't there. This is trained with a "curriculum" approach where first we handle relatively easy images with close up objects before training on more complex outdoor scenes. For some reason this was the only way I was able to get it to work on the complex scenes. The training is done by synthesizing IR from VIS by mixing the color channels into one using random weightings but biased towards the red channel. Not a great model for thermal IR, but the hope is that the extra noise thrown in will make it robust enough. In the limited testing I've done with actual IR images, this seems to be true.
 
 ## Overview
 
@@ -344,9 +344,7 @@ If COCO download fails:
 1. Download manually from https://cocodataset.org/#download
 2. Extract to `./data/coco/train2017/` and `./data/coco/val2017/`
 
-## Citation
-
-If you use this code, please cite the relevant papers that inspired this architecture:
+## References
 
 ```bibtex
 @article{johnson2016perceptual,
