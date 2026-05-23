@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IR-Vis: IR to Color Image Translation</title>
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #1a1a2e;
+      --surface:    #16213e;
+      --surface2:   #0f3460;
+      --accent:     #e94560;
+      --text:       #eaeaea;
+      --text-muted: #8888aa;
+      --radius:     8px;
+      --track-h:    6px;
+      --thumb-d:    20px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header ────────────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      border-bottom: 2px solid var(--accent);
+    }
+    header h1 { font-size: 1.4rem; letter-spacing: 0.05em; }
+    header span { color: var(--accent); font-weight: 700; }
+
+    /* ─── Layout ────────────────────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 1.5rem;
+      padding: 1.5rem;
+    }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ─── Image panels ──────────────────────────────────────────────────────── */
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 700px) {
+      .panels { grid-template-columns: 1fr; }
+    }
+
+    .img-panel {
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .img-panel-header {
+      background: var(--surface2);
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .img-panel-body {
+      flex: 1;
+      position: relative;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .img-panel-body img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+    .img-panel-body img.visible { display: block; }
+    .img-panel-body .placeholder {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      pointer-events: none;
+    }
+    .img-panel-body .placeholder svg { width: 48px; height: 48px; margin-bottom: 0.5rem; opacity: 0.4; }
+    .img-panel-body input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    /* ─── Settings panel ────────────────────────────────────────────────────── */
+    .settings {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .settings h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--surface2);
+      padding-bottom: 0.75rem;
+    }
+
+    /* ─── Slider group ──────────────────────────────────────────────────────── */
+    .slider-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 0.85rem;
+    }
+    .slider-label .name { color: var(--text); }
+    .slider-label .value {
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      font-weight: 600;
+      min-width: 2.5em;
+      text-align: right;
+    }
+
+    /*
+     * Custom drag-only slider.
+     *
+     * Clicking anywhere on the track is blocked by setting pointer-events:none
+     * on the track fill and only enabling pointer-events on the thumb itself.
+     * The entire .custom-slider wrapper still receives events so the thumb can
+     * be dragged – but a bare click on the track never moves the thumb.
+     */
+    .custom-slider {
+      position: relative;
+      height: var(--thumb-d);
+      display: flex;
+      align-items: center;
+      /* Capture pointer only when dragging; track clicks fall through to nothing */
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Track: full width background bar – pointer events disabled so track clicks
+       do NOT move the thumb. */
+    .custom-slider .track {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: var(--track-h);
+      background: var(--surface2);
+      border-radius: calc(var(--track-h) / 2);
+      pointer-events: none;          /* ← clicks on the track are ignored */
+      overflow: hidden;
+    }
+
+    /* Filled portion of the track */
+    .custom-slider .track-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: calc(var(--track-h) / 2);
+      pointer-events: none;          /* ← also ignored */
+    }
+
+    /* Thumb / pill – this is the ONLY element that responds to pointer events */
+    .custom-slider .thumb {
+      position: absolute;
+      width: var(--thumb-d);
+      height: var(--thumb-d);
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid var(--accent);
+      cursor: grab;
+      /* Translate so the thumb centre sits exactly on the value position */
+      transform: translateX(-50%);
+      /* pointer-events are left at the default 'auto' – only the thumb is
+         interactive, the track has pointer-events:none so clicks there are
+         silently dropped. */
+      transition: box-shadow 0.15s ease, transform 0.05s ease;
+      z-index: 1;
+    }
+    .custom-slider .thumb:hover {
+      box-shadow: 0 0 0 6px rgba(233, 69, 96, 0.25);
+    }
+    .custom-slider .thumb.dragging {
+      cursor: grabbing;
+      box-shadow: 0 0 0 8px rgba(233, 69, 96, 0.35);
+      /* Remove transition delay while actively dragging for responsiveness */
+      transform: translateX(-50%) scale(1.15);
+    }
+
+    /* ─── Action buttons ────────────────────────────────────────────────────── */
+    .actions { display: flex; flex-direction: column; gap: 0.75rem; }
+    button {
+      padding: 0.65rem 1rem;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { filter: brightness(1.15); }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+    }
+    .btn-secondary:hover { filter: brightness(1.3); }
+    .btn-primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      filter: none;
+      transform: none;
+    }
+
+    /* ─── Status bar ────────────────────────────────────────────────────────── */
+    footer {
+      background: var(--surface);
+      padding: 0.4rem 1.5rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--surface2);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1><span>IR</span>-Vis</h1>
+  <span style="color:var(--text-muted); font-size:0.85rem;">IR to Color Image Translation</span>
+</header>
+
+<main>
+  <!-- Image panels -->
+  <section style="display:flex; flex-direction:column; gap:1rem;">
+    <div class="panels">
+      <!-- IR input -->
+      <div class="img-panel" id="panel-ir">
+        <div class="img-panel-header">IR Input</div>
+        <div class="img-panel-body" id="drop-ir">
+          <div class="placeholder" id="ph-ir">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 16v-8M8 12l4-4 4 4"/>
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+            </svg>
+            <div>Click to upload IR image</div>
+          </div>
+          <img id="img-ir" alt="IR input" />
+          <input type="file" id="file-ir" accept="image/*" aria-label="Upload IR image" />
+        </div>
+      </div>
+
+      <!-- Reference input -->
+      <div class="img-panel" id="panel-ref">
+        <div class="img-panel-header">VIS Reference</div>
+        <div class="img-panel-body" id="drop-ref">
+          <div class="placeholder" id="ph-ref">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 16v-8M8 12l4-4 4 4"/>
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+            </svg>
+            <div>Click to upload reference image</div>
+          </div>
+          <img id="img-ref" alt="VIS reference" />
+          <input type="file" id="file-ref" accept="image/*" aria-label="Upload reference image" />
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div class="img-panel" id="panel-out">
+        <div class="img-panel-header">Colorized Output</div>
+        <div class="img-panel-body" id="drop-out" style="cursor:default;">
+          <div class="placeholder" id="ph-out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 8v4l3 3"/>
+            </svg>
+            <div>Output will appear here</div>
+          </div>
+          <img id="img-out" alt="Colorized output" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Settings sidebar -->
+  <aside class="settings" aria-label="Visualization settings">
+    <h2>Settings</h2>
+
+    <!-- Colorization blend -->
+    <div class="slider-group">
+      <div class="slider-label">
+        <span class="name">Colorization Blend</span>
+        <span class="value" id="val-blend">1.00</span>
+      </div>
+      <div class="custom-slider" id="slider-blend" data-min="0" data-max="1" data-step="0.01" data-value="1" data-target="val-blend" role="slider" aria-label="Colorization blend" aria-valuemin="0" aria-valuemax="1" aria-valuenow="1" tabindex="0">
+        <div class="track"><div class="track-fill" id="fill-blend"></div></div>
+        <div class="thumb" id="thumb-blend"></div>
+      </div>
+    </div>
+
+    <!-- Contrast -->
+    <div class="slider-group">
+      <div class="slider-label">
+        <span class="name">Contrast</span>
+        <span class="value" id="val-contrast">1.00</span>
+      </div>
+      <div class="custom-slider" id="slider-contrast" data-min="0.5" data-max="2" data-step="0.01" data-value="1" data-target="val-contrast" role="slider" aria-label="Contrast" aria-valuemin="0.5" aria-valuemax="2" aria-valuenow="1" tabindex="0">
+        <div class="track"><div class="track-fill" id="fill-contrast"></div></div>
+        <div class="thumb" id="thumb-contrast"></div>
+      </div>
+    </div>
+
+    <!-- Brightness -->
+    <div class="slider-group">
+      <div class="slider-label">
+        <span class="name">Brightness</span>
+        <span class="value" id="val-brightness">0.00</span>
+      </div>
+      <div class="custom-slider" id="slider-brightness" data-min="-0.5" data-max="0.5" data-step="0.01" data-value="0" data-target="val-brightness" role="slider" aria-label="Brightness" aria-valuemin="-0.5" aria-valuemax="0.5" aria-valuenow="0" tabindex="0">
+        <div class="track"><div class="track-fill" id="fill-brightness"></div></div>
+        <div class="thumb" id="thumb-brightness"></div>
+      </div>
+    </div>
+
+    <!-- Saturation -->
+    <div class="slider-group">
+      <div class="slider-label">
+        <span class="name">Saturation</span>
+        <span class="value" id="val-saturation">1.00</span>
+      </div>
+      <div class="custom-slider" id="slider-saturation" data-min="0" data-max="2" data-step="0.01" data-value="1" data-target="val-saturation" role="slider" aria-label="Saturation" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" tabindex="0">
+        <div class="track"><div class="track-fill" id="fill-saturation"></div></div>
+        <div class="thumb" id="thumb-saturation"></div>
+      </div>
+    </div>
+
+    <!-- Sharpness -->
+    <div class="slider-group">
+      <div class="slider-label">
+        <span class="name">Sharpness</span>
+        <span class="value" id="val-sharpness">0.00</span>
+      </div>
+      <div class="custom-slider" id="slider-sharpness" data-min="0" data-max="1" data-step="0.01" data-value="0" data-target="val-sharpness" role="slider" aria-label="Sharpness" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" tabindex="0">
+        <div class="track"><div class="track-fill" id="fill-sharpness"></div></div>
+        <div class="thumb" id="thumb-sharpness"></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" id="btn-run" disabled>Run Colorization</button>
+      <button class="btn-secondary" id="btn-reset">Reset Settings</button>
+      <button class="btn-secondary" id="btn-download" disabled>Download Result</button>
+    </div>
+  </aside>
+</main>
+
+<footer id="status">Ready – upload an IR image and a visible-light reference to get started.</footer>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Custom drag-only sliders
+ *
+ * The slider track has pointer-events:none in CSS, so clicking anywhere on the
+ * track does NOT move the thumb.  Only dragging the thumb itself changes the
+ * value.  This matches the requirement that "the ONLY way to move a slider
+ * should be dragging the slider pill itself."
+ * ───────────────────────────────────────────────────────────────────────────*/
+
+/**
+ * Initialise a custom drag-only slider.
+ *
+ * @param {HTMLElement} container - The `.custom-slider` wrapper element.
+ */
+function initSlider(container) {
+  const min   = parseFloat(container.dataset.min);
+  const max   = parseFloat(container.dataset.max);
+  const step  = parseFloat(container.dataset.step);
+  let   value = parseFloat(container.dataset.value);
+
+  const thumb     = container.querySelector('.thumb');
+  const trackFill = container.querySelector('.track-fill');
+  const valueEl   = document.getElementById(container.dataset.target);
+
+  /** Convert a raw value to a [0,1] fraction. */
+  const toFraction = (v) => (v - min) / (max - min);
+
+  /** Snap a value to the nearest step and clamp within [min, max]. */
+  const snap = (v) => {
+    const snapped = Math.round((v - min) / step) * step + min;
+    return Math.min(max, Math.max(min, parseFloat(snapped.toFixed(10))));
+  };
+
+  /** Render the thumb and fill to match the current `value`. */
+  function render() {
+    const pct = toFraction(value) * 100;
+    thumb.style.left = pct + '%';
+    trackFill.style.width = pct + '%';
+
+    const display = value % 1 === 0 ? value.toFixed(0) : value.toFixed(2);
+    valueEl.textContent = display;
+
+    container.setAttribute('aria-valuenow', value);
+    container.dataset.value = value;
+  }
+
+  // ── Drag handling ─────────────────────────────────────────────────────────
+  // Dragging starts on the thumb (mousedown / touchstart).
+  // Track and wrapper have pointer-events:none for the track element so bare
+  // clicks on the track never fire a "drag" and the thumb doesn't jump.
+
+  let dragging = false;
+  let startX   = 0;
+  let startVal = value;
+
+  function onDragStart(e) {
+    // Only the thumb triggers a drag; the track is pointer-events:none.
+    e.preventDefault();
+    dragging = true;
+    startX   = (e.touches ? e.touches[0].clientX : e.clientX);
+    startVal = value;
+    thumb.classList.add('dragging');
+
+    document.addEventListener('mousemove', onDragMove, { passive: false });
+    document.addEventListener('mouseup',   onDragEnd);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('touchend',  onDragEnd);
+  }
+
+  function onDragMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+
+    const clientX  = e.touches ? e.touches[0].clientX : e.clientX;
+    const rect     = container.getBoundingClientRect();
+    const deltaX   = clientX - startX;
+    const deltaVal = (deltaX / rect.width) * (max - min);
+
+    value = snap(startVal + deltaVal);
+    render();
+    container.dispatchEvent(new CustomEvent('slider-change', { bubbles: true, detail: { value } }));
+  }
+
+  function onDragEnd() {
+    if (!dragging) return;
+    dragging = false;
+    thumb.classList.remove('dragging');
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup',   onDragEnd);
+    document.removeEventListener('touchmove', onDragMove);
+    document.removeEventListener('touchend',  onDragEnd);
+  }
+
+  thumb.addEventListener('mousedown',  onDragStart);
+  thumb.addEventListener('touchstart', onDragStart, { passive: false });
+
+  // ── Keyboard accessibility ─────────────────────────────────────────────────
+  container.addEventListener('keydown', (e) => {
+    const inc = e.shiftKey ? step * 10 : step;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      value = snap(value + inc);
+      render();
+      e.preventDefault();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      value = snap(value - inc);
+      render();
+      e.preventDefault();
+    } else if (e.key === 'Home') {
+      value = min;
+      render();
+      e.preventDefault();
+    } else if (e.key === 'End') {
+      value = max;
+      render();
+      e.preventDefault();
+    }
+    container.dispatchEvent(new CustomEvent('slider-change', { bubbles: true, detail: { value } }));
+  });
+
+  // ── Expose API ─────────────────────────────────────────────────────────────
+  container.getValue = () => value;
+  container.setValue = (v) => { value = snap(v); render(); };
+
+  // Initial render
+  render();
+}
+
+// Initialise all sliders on the page
+document.querySelectorAll('.custom-slider').forEach(initSlider);
+
+/* ─── File upload preview ───────────────────────────────────────────────────── */
+function setupFileInput(inputId, imgId, placeholderId) {
+  const input = document.getElementById(inputId);
+  const img   = document.getElementById(imgId);
+  const ph    = document.getElementById(placeholderId);
+
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    img.src = url;
+    img.classList.add('visible');
+    ph.style.display = 'none';
+    checkReady();
+  });
+}
+
+setupFileInput('file-ir',  'img-ir',  'ph-ir');
+setupFileInput('file-ref', 'img-ref', 'ph-ref');
+
+function checkReady() {
+  const irReady  = document.getElementById('img-ir').classList.contains('visible');
+  const refReady = document.getElementById('img-ref').classList.contains('visible');
+  document.getElementById('btn-run').disabled = !(irReady && refReady);
+}
+
+/* ─── Reset settings ────────────────────────────────────────────────────────── */
+const DEFAULTS = {
+  'slider-blend':      1,
+  'slider-contrast':   1,
+  'slider-brightness': 0,
+  'slider-saturation': 1,
+  'slider-sharpness':  0,
+};
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  for (const [id, val] of Object.entries(DEFAULTS)) {
+    document.getElementById(id).setValue(val);
+  }
+  setStatus('Settings reset to defaults.');
+});
+
+/* ─── Run colorization (client-side demo / server round-trip stub) ───────────── */
+document.getElementById('btn-run').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+  setStatus('Running colorization…');
+
+  try {
+    // Build form data for optional server-side processing
+    const irFile  = document.getElementById('file-ir').files[0];
+    const refFile = document.getElementById('file-ref').files[0];
+
+    const settings = {
+      blend:      parseFloat(document.getElementById('slider-blend').dataset.value),
+      contrast:   parseFloat(document.getElementById('slider-contrast').dataset.value),
+      brightness: parseFloat(document.getElementById('slider-brightness').dataset.value),
+      saturation: parseFloat(document.getElementById('slider-saturation').dataset.value),
+      sharpness:  parseFloat(document.getElementById('slider-sharpness').dataset.value),
+    };
+
+    // Attempt server-side inference if a /colorize endpoint exists.
+    const formData = new FormData();
+    formData.append('ir',  irFile);
+    formData.append('ref', refFile);
+    formData.append('settings', JSON.stringify(settings));
+
+    let resultUrl = null;
+    try {
+      const resp = await fetch('/colorize', { method: 'POST', body: formData });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        resultUrl = URL.createObjectURL(blob);
+      }
+    } catch (_) {
+      // No server available – fall through to client-side preview.
+    }
+
+    if (!resultUrl) {
+      // Client-side demo: apply basic canvas adjustments as a preview.
+      resultUrl = await clientSidePreview(irFile, settings);
+    }
+
+    const outImg = document.getElementById('img-out');
+    outImg.src = resultUrl;
+    outImg.classList.add('visible');
+    document.getElementById('ph-out').style.display = 'none';
+
+    // Store for download
+    outImg.dataset.downloadUrl = resultUrl;
+    document.getElementById('btn-download').disabled = false;
+
+    setStatus('Colorization complete.');
+  } catch (err) {
+    setStatus('Error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Colorization';
+    checkReady();
+  }
+});
+
+/** Client-side preview: load the IR image and apply basic adjustments via Canvas. */
+async function clientSidePreview(file, settings) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+
+      // Apply contrast + brightness via CSS filter on a temporary canvas
+      ctx.filter = [
+        `contrast(${settings.contrast})`,
+        `brightness(${1 + settings.brightness})`,
+        `saturate(${settings.saturation})`,
+      ].join(' ');
+      ctx.drawImage(img, 0, 0);
+
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => resolve(URL.createObjectURL(blob)), 'image/png');
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+/* ─── Download ──────────────────────────────────────────────────────────────── */
+document.getElementById('btn-download').addEventListener('click', () => {
+  const outImg = document.getElementById('img-out');
+  const url    = outImg.dataset.downloadUrl;
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href     = url;
+  a.download = 'ir-colorized.png';
+  a.click();
+});
+
+/* ─── Helpers ───────────────────────────────────────────────────────────────── */
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+</script>
+</body>
+</html>
